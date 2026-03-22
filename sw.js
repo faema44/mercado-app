@@ -1,5 +1,5 @@
 // Service Worker — Mercado PWA
-// Versão do cache: atualize este número para forçar atualização
+// Versão do cache: atualize este número para forçar atualização novo
 const CACHE_NAME = 'mercado-v5';
 
 // Arquivos para cache offline
