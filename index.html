@@ -969,6 +969,7 @@ window.addEventListener('offline', () => setSyncStatus('offline','Sem internet')
     <button class="btn-primary" onclick="saveCurrentList()">💾 Salvar lista</button>
     <button class="btn-primary" style="background:#25D366;margin-top:8px" onclick="shareWhatsApp()">💬 Enviar por WhatsApp</button>
     <button class="btn-primary" style="background:#555;margin-top:8px" onclick="shareGeneral()">📤 Compartilhar</button>
+    <button class="btn-primary" style="background:#1565c0;margin-top:8px" onclick="printLista()">🖨️ Imprimir lista</button>
     <button class="btn-danger" onclick="clearLista()">🗑 Limpar lista atual</button>
     <button class="btn-secondary" onclick="closeModal('mListOpts')">Cancelar</button>
   </div>
@@ -1005,6 +1006,59 @@ function loadState() {
     if (!S.saved) S.saved = [];
   } catch(e) { S.categories = JSON.parse(JSON.stringify(DEFAULT_CATS)); }
 }
+// ============================================================
+// PIN PROTECTION
+// ============================================================
+let _pinUnlocked = false;
+
+function initPin() {
+  const pin = localStorage.getItem('mercado_pin');
+  const el = document.getElementById('pinStatus');
+  const btnRemove = document.getElementById('btnRemovePin');
+  if (pin) {
+    if (el) el.innerHTML = '<span style="color:#2e7d32;font-weight:700">✅ PIN ativado</span>';
+    if (btnRemove) btnRemove.style.display = 'block';
+    _pinUnlocked = false;
+  } else {
+    if (el) el.innerHTML = '<span style="color:#888">PIN não configurado — edição livre</span>';
+    if (btnRemove) btnRemove.style.display = 'none';
+    _pinUnlocked = true;
+  }
+}
+
+function setPin() {
+  const val = document.getElementById('pinInput').value.trim();
+  if (!val || val.length < 4) { toast('PIN deve ter pelo menos 4 dígitos!'); return; }
+  localStorage.setItem('mercado_pin', val);
+  _pinUnlocked = true; // já está desbloqueado pois acabou de definir
+  document.getElementById('pinInput').value = '';
+  initPin();
+  toast('PIN ativado! 🔐');
+}
+
+function removePin() {
+  if (!checkPin()) return;
+  localStorage.removeItem('mercado_pin');
+  _pinUnlocked = true;
+  initPin();
+  toast('PIN removido! 🔓');
+}
+
+function checkPin() {
+  const pin = localStorage.getItem('mercado_pin');
+  if (!pin) return true; // no PIN set = free
+  if (_pinUnlocked) return true; // already unlocked this session
+  const entered = prompt('🔐 Digite o PIN para editar:');
+  if (entered === null) return false; // cancelled
+  if (entered === pin) {
+    _pinUnlocked = true;
+    toast('✅ Desbloqueado!');
+    return true;
+  }
+  toast('❌ PIN incorreto!');
+  return false;
+}
+
 function saveState() {
   localStorage.setItem('mercado_v2', JSON.stringify(S));
   localStorage.setItem('mercado_lastPush', Date.now().toString());
@@ -1126,6 +1180,7 @@ function renderCats() {
 let _editCatId = null, _selIcon = ICONS[0], _selColor = COLORS[0];
 
 function openNewCat() {
+  if (!checkPin()) return;
   _editCatId = null; _selIcon = ICONS[0]; _selColor = COLORS[0];
   document.getElementById('mCatTitle').textContent = 'Nova Categoria';
   document.getElementById('mCatNome').value = '';
@@ -1133,6 +1188,7 @@ function openNewCat() {
   buildPickers(); openModal('mCat');
 }
 function openEditCat(id) {
+  if (!checkPin()) return;
   _editCatId = id;
   const cat = S.categories.find(c=>c.id===id);
   _selIcon = cat.icon; _selColor = cat.color;
@@ -1177,7 +1233,7 @@ function deleteCategoria() {
 // PRODUCTS
 // ============================================================
 function renderProds(catId) {
-  const prods = S.products[catId] || [];
+  const prods = [...(S.products[catId] || [])].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
   const el = document.getElementById('prodsList');
   const cat = S.categories.find(c=>c.id===catId);
   document.getElementById('prodCatCount').textContent = prods.length + ' produto' + (prods.length!==1?'s':'');
@@ -1209,6 +1265,7 @@ function renderProds(catId) {
 let _editProdId = null, _editProdCatId = null, _tempImg = null;
 
 function openNewProd() {
+  if (!checkPin()) return;
   _editProdId = null; _tempImg = null;
   document.getElementById('mProdTitle').textContent = 'Novo Produto';
   document.getElementById('mProdNome').value = '';
@@ -1218,6 +1275,7 @@ function openNewProd() {
   openModal('mProd');
 }
 function openEditProd(prodId, catId) {
+  if (!checkPin()) return;
   _editProdId = prodId; _editProdCatId = catId; _tempImg = null;
   const p = (S.products[catId]||[]).find(x=>x.id===prodId);
   document.getElementById('mProdTitle').textContent = 'Editar Produto';
@@ -1357,6 +1415,7 @@ function renderLista() {
       <button class="list-act-btn" style="background:#fff3e0;color:#e65100" onclick="openModal('mListOpts')">⚙️ Opções</button>
       <button class="list-act-btn" style="background:#e8f5e9;color:#2e7d32" onclick="shareWhatsApp()">💬 WhatsApp</button>
       <button class="list-act-btn" style="background:#e3f2fd;color:#1565c0" onclick="shareGeneral()">📤 Compartilhar</button>
+      <button class="list-act-btn" style="background:#ede7f6;color:#4527a0" onclick="printLista()">🖨️ Imprimir</button>
     </div>
   `;
 
@@ -1492,6 +1551,149 @@ function buildText(items) {
   });
   return t;
 }
+function printLista() {
+  if (S.lista.length === 0) { toast('Lista vazia!'); return; }
+  closeModal('mListOpts');
+
+  // Group items by category
+  const byCat = {};
+  S.lista.forEach(item => { (byCat[item.catId] = byCat[item.catId] || []).push(item); });
+
+  // Build print HTML
+  const date = new Date().toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+  let rows = '';
+  Object.keys(byCat).forEach(catId => {
+    const cat = S.categories.find(c => c.id === catId);
+    if (!cat) return;
+    rows += `<tr class="cat-row"><td colspan="2" style="background:${cat.color};padding:6px 10px;font-weight:800;font-size:13px;border-radius:6px">${cat.icon} ${cat.name}</td></tr>`;
+    byCat[catId].forEach(item => {
+      const prod = (S.products[catId] || []).find(p => p.id === item.prodId) || {name:'Produto', obs:''};
+      const qty = item.qty + (item.unit ? ' ' + item.unit : '');
+      const obs = item.obs ? `<br><span style="font-size:10px;color:#888">${item.obs}</span>` : '';
+      const done = item.done ? 'style="text-decoration:line-through;opacity:.5"' : '';
+      rows += `
+        <tr>
+          <td ${done} style="padding:5px 10px;font-size:13px;border-bottom:1px solid #f0ece4">
+            <span style="font-size:16px">☐</span> ${prod.name}${obs}
+          </td>
+          <td ${done} style="padding:5px 10px;font-size:13px;border-bottom:1px solid #f0ece4;text-align:right;font-weight:700;white-space:nowrap">
+            ${qty}
+          </td>
+        </tr>`;
+    });
+  });
+
+  const totalItems = S.lista.length;
+  const doneItems  = S.lista.filter(l => l.done).length;
+
+  const printHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Lista de Supermercado</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #fff;
+      color: #2d2416;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 3px solid #ff7043;
+    }
+    .header h1 { font-size: 22px; color: #ff7043; }
+    .header p  { font-size: 12px; color: #888; margin-top: 3px; }
+    .header .meta { text-align: right; font-size: 12px; color: #888; }
+    .columns {
+      columns: 3;
+      column-gap: 20px;
+    }
+    @media (max-width: 600px) { .columns { columns: 2; } }
+    .cat-block {
+      break-inside: avoid;
+      margin-bottom: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .cat-row td {
+      border-radius: 6px;
+    }
+    .footer {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #e0d8cc;
+      font-size: 11px;
+      color: #aaa;
+      text-align: center;
+    }
+    @media print {
+      body { padding: 10px; }
+      @page { margin: 10mm; size: A4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>🛒 Lista de Supermercado</h1>
+      <p>${date}</p>
+    </div>
+    <div class="meta">
+      ${doneItems > 0 ? doneItems + '/' + totalItems + ' itens marcados' : totalItems + ' itens'}
+    </div>
+  </div>
+
+  <div class="columns">
+    ${Object.keys(byCat).map(catId => {
+      const cat = S.categories.find(c => c.id === catId);
+      if (!cat) return '';
+      const items = byCat[catId];
+      return `<div class="cat-block">
+        <table>
+          <tr class="cat-row">
+            <td colspan="2" style="background:${cat.color};padding:6px 10px;font-weight:800;font-size:13px;border-radius:6px;margin-bottom:4px">
+              ${cat.icon} ${cat.name}
+            </td>
+          </tr>
+          ${items.map(item => {
+            const prod = (S.products[catId] || []).find(p => p.id === item.prodId) || {name:'Produto', obs:''};
+            const qty = item.qty + (item.unit ? ' ' + item.unit : '');
+            const obs = item.obs ? `<br><span style="font-size:10px;color:#888;font-style:italic">${item.obs}</span>` : '';
+            const done = item.done ? 'style="text-decoration:line-through;opacity:.5"' : '';
+            return `<tr>
+              <td ${done} style="padding:4px 8px;font-size:12px;border-bottom:1px solid #f0ece4">
+                ☐ ${prod.name}${obs}
+              </td>
+              <td ${done} style="padding:4px 8px;font-size:12px;border-bottom:1px solid #f0ece4;text-align:right;font-weight:700;white-space:nowrap">
+                ${qty}
+              </td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>`;
+    }).join('')}
+  </div>
+
+  <div class="footer">Impresso em ${new Date().toLocaleString('pt-BR')} • Mercado App</div>
+
+  <script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(printHtml);
+  w.document.close();
+}
+
 function shareWhatsApp() {
   if (S.lista.length===0) { toast('Lista vazia!'); return; }
   window.open('https://wa.me/?text='+encodeURIComponent(buildText(S.lista)),'_blank');
@@ -1685,6 +1887,7 @@ function importarDados(event) {
 loadState();
 renderCats();
 updateBadge();
+initPin();
 
 // Expose to window so Firebase module (type=module, runs earlier) can access
 window.S          = S;
@@ -1747,10 +1950,22 @@ if ('serviceWorker' in navigator) {
     </div>
 
     <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:800;font-size:14px;margin-bottom:4px">🔐 PIN de edição</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
+        Com o PIN ativado, só quem souber o código pode <b>editar</b> categorias, produtos e listas.
+        Quem não souber continua podendo <b>ver</b> a lista normalmente.
+      </div>
+      <div id="pinStatus" style="font-size:13px;margin-bottom:10px"></div>
+      <input class="form-input" id="pinInput" type="password" placeholder="Digite um PIN (4-8 dígitos)" style="margin-bottom:8px">
+      <button class="btn-primary" style="margin-top:0" onclick="setPin()">🔐 Ativar PIN</button>
+      <button class="btn-secondary" style="margin-top:8px" id="btnRemovePin" onclick="removePin()" style="display:none">🔓 Remover PIN</button>
+    </div>
+
+    <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
       <div style="font-weight:800;font-size:14px;margin-bottom:4px">☁️ Grupo de sincronização</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
-        Pessoas com o mesmo <b>código de grupo</b> compartilham categorias e produtos em tempo real.
-        O padrão é <code>default</code> (público). Use um código único para privacidade.
+        Pessoas com o mesmo <b>código de grupo</b> compartilham dados em tempo real.
+        Use um código único para privacidade (ex: <code>familia-silva-2025</code>).
       </div>
       <div style="font-size:13px;margin-bottom:8px">Grupo atual: <b id="currentGroupLabel">default</b></div>
       <input class="form-input" id="groupInput" placeholder="Ex: familia-silva, amigos2025..." style="margin-bottom:8px">
