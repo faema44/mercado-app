@@ -14,191 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <link rel="manifest" href="manifest.json">
 <!-- Firebase SDK -->
-<script type="module">
-// ═══════════════════════════════════════════════════════════
-// FIREBASE CONFIG & INIT
-// ═══════════════════════════════════════════════════════════
-import { initializeApp }         from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs }
-                                  from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey:            "AIzaSyAdZFXFdmTH8hrg7lNA05PTxvLwYPRNSIM",
-  authDomain:        "lista-supermer.firebaseapp.com",
-  projectId:         "lista-supermer",
-  storageBucket:     "lista-supermer.firebasestorage.app",
-  messagingSenderId: "425392090247",
-  appId:             "1:425392090247:web:a1de16ab30536a8e801c22"
-};
-
-const fbApp = initializeApp(firebaseConfig);
-const db    = getFirestore(fbApp);
-
-// ── Document references ──────────────────────────────────
-// All users share the same categories & products
-// Each "group" can be identified by a groupId stored locally
-let GROUP_ID = localStorage.getItem('mercado_group') || 'default';
-
-function groupDoc()   { return doc(db, 'grupos', GROUP_ID); }
-function listsCol()   { return collection(db, 'grupos', GROUP_ID, 'listas'); }
-function listDoc(id)  { return doc(db,  'grupos', GROUP_ID, 'listas', id); }
-
-// ── Sync status UI ───────────────────────────────────────
-function setSyncStatus(state, msg) {
-  const el = document.getElementById('syncStatus');
-  if (!el) return;
-  el.style.display = 'block';
-  el.className = '';
-  el.classList.add(state);
-  const icons = { syncing:'🔄', ok:'✅', error:'❌', offline:'📴' };
-  el.textContent = (icons[state]||'') + ' ' + msg;
-  if (state === 'ok') setTimeout(() => { el.style.display='none'; }, 3000);
-}
-
-// ── UPLOAD: push local state to Firestore ────────────────
-async function pushToCloud() {
-  if (!navigator.onLine) { setSyncStatus('offline','Offline'); return; }
-  try {
-    if (!window.S) return;
-    setSyncStatus('syncing','Salvando...');
-    // Flag to prevent onSnapshot from overwriting our own push
-    window._justPushed = true;
-    clearTimeout(window._justPushedTimer);
-    window._justPushedTimer = setTimeout(() => { window._justPushed = false; }, 4000);
-    const ts = Date.now();
-    localStorage.setItem('mercado_lastPush', ts.toString());
-    await setDoc(groupDoc(), {
-      categories: window.S.categories,
-      products:   window.S.products,
-      updatedAt:  ts
-    });
-    setSyncStatus('ok','Sincronizado');
-  } catch(e) {
-    setSyncStatus('error','Erro ao salvar');
-    console.error('push error', e);
-  }
-}
-
-// ── DOWNLOAD: pull from Firestore once ───────────────────
-async function pullFromCloud() {
-  if (!navigator.onLine) { setSyncStatus('offline','Offline'); return; }
-  try {
-    setSyncStatus('syncing','Carregando...');
-    if (!window.S) return;
-    const snap = await getDoc(groupDoc());
-    if (snap.exists()) {
-      const data = snap.data();
-      if (data.categories) window.S.categories = data.categories;
-      if (data.products)   window.S.products   = data.products;
-      // ensure local products map is complete
-      window.S.categories.forEach(c => { if (!window.S.products[c.id]) window.S.products[c.id] = []; });
-      window.saveState();
-      window.renderCats();
-      window.updateBadge();
-    }
-    setSyncStatus('ok','Sincronizado');
-  } catch(e) {
-    setSyncStatus('error','Erro ao carregar');
-    console.error('pull error', e);
-  }
-}
-
-// ── REALTIME LISTENER: auto-sync on remote changes ───────
-let unsubscribe = null;
-function startRealtimeSync() {
-  if (unsubscribe) unsubscribe();
-  unsubscribe = onSnapshot(groupDoc(), (snap) => {
-    if (!snap.exists() || !window.S) return;
-    // Ignore if WE just pushed (within last 3 seconds)
-    if (window._justPushed) return;
-    const data = snap.data();
-    const remoteTs = data.updatedAt || 0;
-    const localTs  = parseInt(localStorage.getItem('mercado_lastPush') || '0');
-    // Only apply if remote data is strictly newer than our last push
-    if (remoteTs > localTs + 2000) {
-      if (data.categories) window.S.categories = data.categories;
-      if (data.products)   window.S.products   = data.products;
-      window.S.categories.forEach(c => { if (!window.S.products[c.id]) window.S.products[c.id] = []; });
-      window.saveState();
-      window.renderCats();
-      window.updateBadge();
-      setSyncStatus('ok','Atualizado por outro dispositivo');
-    }
-  }, (err) => {
-    setSyncStatus('error','Sem conexão');
-  });
-}
-
-// ── SAVED LISTS sync ─────────────────────────────────────
-async function pushListToCloud(list) {
-  if (!navigator.onLine) return;
-  try {
-    await setDoc(listDoc(list.id), list);
-  } catch(e) { console.error('list push error', e); }
-}
-
-async function pullSavedListsFromCloud() {
-  if (!navigator.onLine) return;
-  try {
-    const snap = await getDocs(listsCol());
-    const cloudLists = snap.docs.map(d => d.data());
-    // Merge: cloud wins for same id
-    if (!window.S) return;
-    const merged = [...window.S.saved];
-    cloudLists.forEach(cl => {
-      const idx = merged.findIndex(l => l.id === cl.id);
-      if (idx >= 0) merged[idx] = cl; else merged.push(cl);
-    });
-    merged.sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
-    window.S.saved = merged;
-    window.saveState();
-  } catch(e) { console.error('lists pull error', e); }
-}
-
-// ── GROUP switching ──────────────────────────────────────
-window.switchGroup = function(newId) {
-  GROUP_ID = newId.trim() || 'default';
-  localStorage.setItem('mercado_group', GROUP_ID);
-  if (unsubscribe) unsubscribe();
-  pullFromCloud().then(() => {
-    pullSavedListsFromCloud();
-    startRealtimeSync();
-  });
-  document.getElementById('currentGroupLabel').textContent = GROUP_ID;
-  toast('Grupo alterado para: ' + GROUP_ID);
-};
-
-// ── Expose Firebase functions to global scope ────────────
-window.pushToCloud          = pushToCloud;
-window.pullFromCloud        = pullFromCloud;
-window.pushListToCloud      = pushListToCloud;
-window.pullSavedListsFromCloud = pullSavedListsFromCloud;
-
-// ── Bootstrap ────────────────────────────────────────────
-function firebaseInit() {
-  const el = document.getElementById('currentGroupLabel');
-  if (el) el.textContent = GROUP_ID;
-  pullFromCloud().then(() => {
-    pullSavedListsFromCloud();
-    startRealtimeSync();
-  });
-}
-
-// Wait for main app script to be ready before touching window.S
-function waitForApp(fn) {
-  if (window._appReady) {
-    fn();
-  } else {
-    window._firebaseQueue = window._firebaseQueue || [];
-    window._firebaseQueue.push(fn);
-  }
-}
-
-window.addEventListener('load', () => waitForApp(firebaseInit));
-
-window.addEventListener('online',  () => { pullFromCloud(); setSyncStatus('ok','Online'); });
-window.addEventListener('offline', () => setSyncStatus('offline','Sem internet'));
-</script>
+<!-- Firebase loaded at bottom -->
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>🛒 Mercado</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1786,6 +1602,195 @@ if (window._firebaseQueue) {
   window._firebaseQueue.forEach(fn => fn());
   window._firebaseQueue = [];
 }
+</script>
+
+
+<script type="module">
+// Firebase — loaded after app is ready
+// ═══════════════════════════════════════════════════════════
+// FIREBASE CONFIG & INIT
+// ═══════════════════════════════════════════════════════════
+import { initializeApp }         from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs }
+                                  from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyAdZFXFdmTH8hrg7lNA05PTxvLwYPRNSIM",
+  authDomain:        "lista-supermer.firebaseapp.com",
+  projectId:         "lista-supermer",
+  storageBucket:     "lista-supermer.firebasestorage.app",
+  messagingSenderId: "425392090247",
+  appId:             "1:425392090247:web:a1de16ab30536a8e801c22"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db    = getFirestore(fbApp);
+
+// ── Document references ──────────────────────────────────
+// All users share the same categories & products
+// Each "group" can be identified by a groupId stored locally
+let GROUP_ID = localStorage.getItem('mercado_group') || 'default';
+
+function groupDoc()   { return doc(db, 'grupos', GROUP_ID); }
+function listsCol()   { return collection(db, 'grupos', GROUP_ID, 'listas'); }
+function listDoc(id)  { return doc(db,  'grupos', GROUP_ID, 'listas', id); }
+
+// ── Sync status UI ───────────────────────────────────────
+function setSyncStatus(state, msg) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.style.display = 'block';
+  el.className = '';
+  el.classList.add(state);
+  const icons = { syncing:'🔄', ok:'✅', error:'❌', offline:'📴' };
+  el.textContent = (icons[state]||'') + ' ' + msg;
+  if (state === 'ok') setTimeout(() => { el.style.display='none'; }, 3000);
+}
+
+// ── UPLOAD: push local state to Firestore ────────────────
+async function pushToCloud() {
+  if (!navigator.onLine) { setSyncStatus('offline','Offline'); return; }
+  try {
+    if (!window.S) return;
+    setSyncStatus('syncing','Salvando...');
+    // Flag to prevent onSnapshot from overwriting our own push
+    window._justPushed = true;
+    clearTimeout(window._justPushedTimer);
+    window._justPushedTimer = setTimeout(() => { window._justPushed = false; }, 4000);
+    const ts = Date.now();
+    localStorage.setItem('mercado_lastPush', ts.toString());
+    await setDoc(groupDoc(), {
+      categories: window.S.categories,
+      products:   window.S.products,
+      updatedAt:  ts
+    });
+    setSyncStatus('ok','Sincronizado');
+  } catch(e) {
+    setSyncStatus('error','Erro ao salvar');
+    console.error('push error', e);
+  }
+}
+
+// ── DOWNLOAD: pull from Firestore once ───────────────────
+async function pullFromCloud() {
+  if (!navigator.onLine) { setSyncStatus('offline','Offline'); return; }
+  try {
+    setSyncStatus('syncing','Carregando...');
+    if (!window.S) return;
+    const snap = await getDoc(groupDoc());
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data.categories) window.S.categories = data.categories;
+      if (data.products)   window.S.products   = data.products;
+      // ensure local products map is complete
+      window.S.categories.forEach(c => { if (!window.S.products[c.id]) window.S.products[c.id] = []; });
+      window.saveState();
+      window.renderCats();
+      window.updateBadge();
+    }
+    setSyncStatus('ok','Sincronizado');
+  } catch(e) {
+    setSyncStatus('error','Erro ao carregar');
+    console.error('pull error', e);
+  }
+}
+
+// ── REALTIME LISTENER: auto-sync on remote changes ───────
+let unsubscribe = null;
+function startRealtimeSync() {
+  if (unsubscribe) unsubscribe();
+  unsubscribe = onSnapshot(groupDoc(), (snap) => {
+    if (!snap.exists() || !window.S) return;
+    // Ignore if WE just pushed (within last 3 seconds)
+    if (window._justPushed) return;
+    const data = snap.data();
+    const remoteTs = data.updatedAt || 0;
+    const localTs  = parseInt(localStorage.getItem('mercado_lastPush') || '0');
+    // Only apply if remote data is strictly newer than our last push
+    if (remoteTs > localTs + 2000) {
+      if (data.categories) window.S.categories = data.categories;
+      if (data.products)   window.S.products   = data.products;
+      window.S.categories.forEach(c => { if (!window.S.products[c.id]) window.S.products[c.id] = []; });
+      window.saveState();
+      window.renderCats();
+      window.updateBadge();
+      setSyncStatus('ok','Atualizado por outro dispositivo');
+    }
+  }, (err) => {
+    setSyncStatus('error','Sem conexão');
+  });
+}
+
+// ── SAVED LISTS sync ─────────────────────────────────────
+async function pushListToCloud(list) {
+  if (!navigator.onLine) return;
+  try {
+    await setDoc(listDoc(list.id), list);
+  } catch(e) { console.error('list push error', e); }
+}
+
+async function pullSavedListsFromCloud() {
+  if (!navigator.onLine) return;
+  try {
+    const snap = await getDocs(listsCol());
+    const cloudLists = snap.docs.map(d => d.data());
+    // Merge: cloud wins for same id
+    if (!window.S) return;
+    const merged = [...window.S.saved];
+    cloudLists.forEach(cl => {
+      const idx = merged.findIndex(l => l.id === cl.id);
+      if (idx >= 0) merged[idx] = cl; else merged.push(cl);
+    });
+    merged.sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+    window.S.saved = merged;
+    window.saveState();
+  } catch(e) { console.error('lists pull error', e); }
+}
+
+// ── GROUP switching ──────────────────────────────────────
+window.switchGroup = function(newId) {
+  GROUP_ID = newId.trim() || 'default';
+  localStorage.setItem('mercado_group', GROUP_ID);
+  if (unsubscribe) unsubscribe();
+  pullFromCloud().then(() => {
+    pullSavedListsFromCloud();
+    startRealtimeSync();
+  });
+  document.getElementById('currentGroupLabel').textContent = GROUP_ID;
+  toast('Grupo alterado para: ' + GROUP_ID);
+};
+
+// ── Expose Firebase functions to global scope ────────────
+window.pushToCloud          = pushToCloud;
+window.pullFromCloud        = pullFromCloud;
+window.pushListToCloud      = pushListToCloud;
+window.pullSavedListsFromCloud = pullSavedListsFromCloud;
+
+// ── Bootstrap ────────────────────────────────────────────
+function firebaseInit() {
+  const el = document.getElementById('currentGroupLabel');
+  if (el) el.textContent = GROUP_ID;
+  pullFromCloud().then(() => {
+    pullSavedListsFromCloud();
+    startRealtimeSync();
+  });
+}
+
+// Wait for main app script to be ready before touching window.S
+function waitForApp(fn) {
+  if (window._appReady) {
+    fn();
+  } else {
+    window._firebaseQueue = window._firebaseQueue || [];
+    window._firebaseQueue.push(fn);
+  }
+}
+
+window.addEventListener('load', () => waitForApp(firebaseInit));
+
+window.addEventListener('online',  () => { pullFromCloud(); setSyncStatus('ok','Online'); });
+window.addEventListener('offline', () => setSyncStatus('offline','Sem internet'));
+
 </script>
 
 <script>
