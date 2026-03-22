@@ -56,6 +56,7 @@ function setSyncStatus(state, msg) {
 async function pushToCloud() {
   if (!navigator.onLine) { setSyncStatus('offline','Offline'); return; }
   try {
+    if (!window.S) return;
     setSyncStatus('syncing','Salvando...');
     await setDoc(groupDoc(), {
       categories: window.S.categories,
@@ -74,6 +75,7 @@ async function pullFromCloud() {
   if (!navigator.onLine) { setSyncStatus('offline','Offline'); return; }
   try {
     setSyncStatus('syncing','Carregando...');
+    if (!window.S) return;
     const snap = await getDoc(groupDoc());
     if (snap.exists()) {
       const data = snap.data();
@@ -97,7 +99,7 @@ let unsubscribe = null;
 function startRealtimeSync() {
   if (unsubscribe) unsubscribe();
   unsubscribe = onSnapshot(groupDoc(), (snap) => {
-    if (!snap.exists()) return;
+    if (!snap.exists() || !window.S) return;
     const data = snap.data();
     // Only update if remote is newer than local
     const remoteTs = data.updatedAt || 0;
@@ -130,6 +132,7 @@ async function pullSavedListsFromCloud() {
     const snap = await getDocs(listsCol());
     const cloudLists = snap.docs.map(d => d.data());
     // Merge: cloud wins for same id
+    if (!window.S) return;
     const merged = [...window.S.saved];
     cloudLists.forEach(cl => {
       const idx = merged.findIndex(l => l.id === cl.id);
@@ -161,14 +164,26 @@ window.pushListToCloud      = pushListToCloud;
 window.pullSavedListsFromCloud = pullSavedListsFromCloud;
 
 // ── Bootstrap ────────────────────────────────────────────
-window.addEventListener('load', () => {
-  document.getElementById('currentGroupLabel').textContent = GROUP_ID;
-  // Pull fresh data, then start listening
+function firebaseInit() {
+  const el = document.getElementById('currentGroupLabel');
+  if (el) el.textContent = GROUP_ID;
   pullFromCloud().then(() => {
     pullSavedListsFromCloud();
     startRealtimeSync();
   });
-});
+}
+
+// Wait for main app script to be ready before touching window.S
+function waitForApp(fn) {
+  if (window._appReady) {
+    fn();
+  } else {
+    window._firebaseQueue = window._firebaseQueue || [];
+    window._firebaseQueue.push(fn);
+  }
+}
+
+window.addEventListener('load', () => waitForApp(firebaseInit));
 
 window.addEventListener('online',  () => { pullFromCloud(); setSyncStatus('ok','Online'); });
 window.addEventListener('offline', () => setSyncStatus('offline','Sem internet'));
@@ -1662,6 +1677,19 @@ function importarDados(event) {
 loadState();
 renderCats();
 updateBadge();
+
+// Expose to window so Firebase module (type=module, runs earlier) can access
+window.S          = S;
+window.saveState  = saveState;
+window.renderCats = renderCats;
+window.updateBadge = updateBadge;
+
+// Signal Firebase that the app is ready
+window._appReady = true;
+if (window._firebaseQueue) {
+  window._firebaseQueue.forEach(fn => fn());
+  window._firebaseQueue = [];
+}
 </script>
 
 <script>
