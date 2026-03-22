@@ -1435,20 +1435,21 @@ function renderLista() {
       const qtyStr = item.qty + (item.unit?' '+item.unit:'');
       const div = document.createElement('div');
       div.className = 'list-item'+(item.done?' done':'');
-      div.innerHTML = `
-        <button class="li-check${item.done?' done':''}" onclick="toggleDone('${item.prodId}')">✓</button>
-        <div class="li-dot" style="background:${cat.color}"></div>
-        <div class="li-info">
-          <div class="li-name">${prod.name}</div>
-          ${item.obs?`<div class="li-obs">${item.obs}</div>`:''}
-        </div>
-        <div class="li-qty-row">
-          <button class="qty-btn" onclick="changeQty('${item.prodId}',-1)">−</button>
-          <span class="qty-num">${qtyStr}</span>
-          <button class="qty-btn" onclick="changeQty('${item.prodId}',1)">+</button>
-          <button class="li-remove" onclick="removeItem('${item.prodId}')">✕</button>
-        </div>
-      `;
+      var obsLiHtml = item.obs ? '<div class="li-obs">' + item.obs + '</div>' : '';
+      var checkCls = item.done ? 'li-check done' : 'li-check';
+      div.innerHTML =
+        '<button class="' + checkCls + '" onclick="toggleDone('' + item.prodId + '')">✓</button>'
+        + '<div class="li-dot" style="background:' + cat.color + '"></div>'
+        + '<div class="li-info">'
+        + '<div class="li-name">' + prod.name + '</div>'
+        + obsLiHtml
+        + '</div>'
+        + '<div class="li-qty-row">'
+        + '<button class="qty-btn" onclick="changeQty('' + item.prodId + '',-1)">−</button>'
+        + '<span class="qty-num">' + qtyStr + '</span>'
+        + '<button class="qty-btn" onclick="changeQty('' + item.prodId + '',1)">+</button>'
+        + '<button class="li-remove" onclick="removeItem('' + item.prodId + '')">✕</button>'
+        + '</div>';
       el.appendChild(div);
     });
   });
