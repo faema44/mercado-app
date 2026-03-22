@@ -1203,7 +1203,7 @@ function renderLista() {
     el.appendChild(sec);
 
     byCat[catId].forEach(item => {
-      const prod = (S.products[catId]||[]).find(p=>p.id===item.prodId)||{name:'Produto',obs:''};
+      const prod = (S.products[catId]||[]).find(p=>p.id===item.prodId)||{name:"Produto",obs:""};
       const qtyStr = item.qty + (item.unit?' '+item.unit:'');
       const div = document.createElement('div');
       div.className = 'list-item'+(item.done?' done':'');
