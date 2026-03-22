@@ -825,6 +825,59 @@ function loadState() {
     if (!S.saved) S.saved = [];
   } catch(e) { S.categories = JSON.parse(JSON.stringify(DEFAULT_CATS)); }
 }
+// ============================================================
+// PIN PROTECTION
+// ============================================================
+var _pinUnlocked = false;
+
+function initPin() {
+  var pin = localStorage.getItem("mercado_pin");
+  var el = document.getElementById("pinStatus");
+  var btnRemove = document.getElementById("btnRemovePin");
+  if (pin) {
+    if (el) el.innerHTML = "<span style=\"color:#2e7d32;font-weight:700\">✅ PIN ativado</span>";
+    if (btnRemove) btnRemove.style.display = "block";
+    _pinUnlocked = false;
+  } else {
+    if (el) el.innerHTML = "<span style=\"color:#888\">Sem PIN — edição livre</span>";
+    if (btnRemove) btnRemove.style.display = "none";
+    _pinUnlocked = true;
+  }
+}
+
+function setPin() {
+  var val = document.getElementById("pinInput").value.trim();
+  if (!val || val.length < 4) { toast("PIN deve ter pelo menos 4 dígitos!"); return; }
+  localStorage.setItem("mercado_pin", val);
+  _pinUnlocked = true;
+  document.getElementById("pinInput").value = "";
+  initPin();
+  toast("PIN ativado! 🔐");
+}
+
+function removePin() {
+  if (!checkPin()) return;
+  localStorage.removeItem("mercado_pin");
+  _pinUnlocked = true;
+  initPin();
+  toast("PIN removido! 🔓");
+}
+
+function checkPin() {
+  var pin = localStorage.getItem("mercado_pin");
+  if (!pin) return true;
+  if (_pinUnlocked) return true;
+  var entered = prompt("🔐 Digite o PIN para editar:");
+  if (entered === null) return false;
+  if (entered === pin) {
+    _pinUnlocked = true;
+    toast("✅ Desbloqueado!");
+    return true;
+  }
+  toast("❌ PIN incorreto!");
+  return false;
+}
+
 function saveState() {
   localStorage.setItem('mercado_v2', JSON.stringify(S));
   localStorage.setItem('mercado_lastPush', Date.now().toString());
@@ -946,6 +999,7 @@ function renderCats() {
 let _editCatId = null, _selIcon = ICONS[0], _selColor = COLORS[0];
 
 function openNewCat() {
+  if (!checkPin()) return;
   _editCatId = null; _selIcon = ICONS[0]; _selColor = COLORS[0];
   document.getElementById('mCatTitle').textContent = 'Nova Categoria';
   document.getElementById('mCatNome').value = '';
@@ -953,6 +1007,7 @@ function openNewCat() {
   buildPickers(); openModal('mCat');
 }
 function openEditCat(id) {
+  if (!checkPin()) return;
   _editCatId = id;
   const cat = S.categories.find(c=>c.id===id);
   _selIcon = cat.icon; _selColor = cat.color;
@@ -1039,6 +1094,7 @@ function renderProds(catId) {
 let _editProdId = null, _editProdCatId = null, _tempImg = null;
 
 function openNewProd() {
+  if (!checkPin()) return;
   _editProdId = null; _tempImg = null;
   document.getElementById('mProdTitle').textContent = 'Novo Produto';
   document.getElementById('mProdNome').value = '';
@@ -1048,6 +1104,7 @@ function openNewProd() {
   openModal('mProd');
 }
 function openEditProd(prodId, catId) {
+  if (!checkPin()) return;
   _editProdId = prodId; _editProdCatId = catId; _tempImg = null;
   const p = (S.products[catId]||[]).find(x=>x.id===prodId);
   document.getElementById('mProdTitle').textContent = 'Editar Produto';
@@ -1589,6 +1646,7 @@ function importarDados(event) {
 loadState();
 renderCats();
 updateBadge();
+initPin();
 
 // Expose to window so Firebase module (type=module, runs earlier) can access
 window.S          = S;
@@ -1845,6 +1903,18 @@ if ('serviceWorker' in navigator) {
         ⚠️ <b>Atenção ao importar:</b> os dados atuais serão <b>substituídos</b> pelos do arquivo importado. 
         Exporte primeiro se quiser guardar os seus dados.
       </div>
+    </div>
+
+    <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:800;font-size:14px;margin-bottom:4px">🔐 PIN de edição</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
+        Com PIN ativado, só quem souber o código pode <b>editar</b> categorias e produtos.
+        Quem não souber ainda pode <b>ver e usar</b> a lista normalmente.
+      </div>
+      <div id="pinStatus" style="font-size:13px;margin-bottom:10px"></div>
+      <input class="form-input" id="pinInput" type="number" placeholder="Digite um PIN (mín. 4 dígitos)" style="margin-bottom:8px">
+      <button class="btn-primary" style="margin-top:0" onclick="setPin()">🔐 Ativar PIN</button>
+      <button class="btn-danger" id="btnRemovePin" style="display:none" onclick="removePin()">🔓 Remover PIN</button>
     </div>
 
     <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
