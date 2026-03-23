@@ -1,7 +1,7 @@
 // Service Worker minimalista — sem cache agressivo
 // Apenas registra para permitir instalação como PWA
 
-const CACHE_NAME = 'mercado-v99';
+const CACHE_NAME = 'mercado-v100';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
