@@ -888,6 +888,13 @@ function checkPin() {
   return false;
 }
 
+function pushLista() {
+  clearTimeout(window._listaTimer);
+  window._listaTimer = setTimeout(function() {
+    if (window.pushListaToCloud) window.pushListaToCloud();
+  }, 600);
+}
+
 function saveState() {
   localStorage.setItem('mercado_v2', JSON.stringify(S));
   localStorage.setItem('mercado_lastPush', Date.now().toString());
@@ -896,13 +903,7 @@ function saveState() {
     clearTimeout(window._pushTimer);
     window._pushTimer = setTimeout(window.pushToCloud, 2000);
   }
-  // Push lista atual to cloud (debounced)
-  clearTimeout(window._listaTimer);
-  window._listaTimer = setTimeout(function() {
-    if (window.pushListaToCloud) {
-      window.pushListaToCloud();
-    }
-  }, 800);
+  // Lista push is handled explicitly by lista-changing functions
 }
 
 // ============================================================
@@ -1218,6 +1219,7 @@ function confirmAdd(dest) {
     S.lista.push({prodId:_addProdId, catId:_addCatId, qty:_addQty, unit, obs, done:false});
   }
   saveState();
+  pushLista();
   closeModal('mAddList');
   updateBadge();
   toast('Adicionado à lista! 🛒');
@@ -1312,21 +1314,21 @@ function renderLista() {
 
 function toggleDone(prodId) {
   const item = S.lista.find(l=>l.prodId===prodId);
-  if (item) { item.done = !item.done; saveState(); renderLista(); }
+  if (item) { item.done = !item.done; saveState(); pushLista(); renderLista(); }
 }
 function changeQty(prodId, d) {
   const item = S.lista.find(l=>l.prodId===prodId);
-  if (item) { item.qty = Math.max(1, item.qty+d); saveState(); renderLista(); }
+  if (item) { item.qty = Math.max(1, item.qty+d); saveState(); pushLista(); renderLista(); }
 }
 function removeItem(prodId) {
   S.lista = S.lista.filter(l=>l.prodId!==prodId);
-  saveState(); renderLista(); updateBadge();
+  saveState(); pushLista(); renderLista(); updateBadge();
   toast('Item removido');
 }
 function clearLista() {
   if (!confirm('Limpar toda a lista atual?')) return;
   S.lista = [];
-  saveState(); closeModal('mListOpts'); renderLista(); updateBadge();
+  saveState(); pushLista(); closeModal('mListOpts'); renderLista(); updateBadge();
   renderCats(); toast('Lista limpa!');
 }
 function saveCurrentList() {
@@ -1807,13 +1809,14 @@ function startRealtimeSync() {
 async function pushListaToCloud() {
   if (!navigator.onLine || !window.S) return;
   try {
-    console.log('Pushing lista to cloud, items:', window.S.lista.length);
+    const ts = Date.now();
+    localStorage.setItem('mercado_lista_ts', ts.toString());
     await setDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'), {
       items: window.S.lista,
-      updatedAt: Date.now(),
+      updatedAt: ts,
       updatedBy: window._deviceId
     });
-    console.log('Lista pushed OK');
+    console.log('Lista pushed OK, items:', window.S.lista.length);
   } catch(e) { console.error('lista push error', e); }
 }
 
@@ -1823,11 +1826,22 @@ async function pullListaFromCloud() {
     const snap = await getDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'));
     if (snap.exists()) {
       const data = snap.data();
-      window.S.lista = data.items || [];
-      window.saveState();
-      window.renderLista && window.renderLista();
-      window.updateBadge();
-      window.renderCats();
+      const cloudItems = data.items || [];
+      const cloudTs    = data.updatedAt || 0;
+      const localTs    = parseInt(localStorage.getItem('mercado_lista_ts') || '0');
+      console.log('Pull lista - cloud items:', cloudItems.length, 'cloudTs:', cloudTs, 'localTs:', localTs);
+      // Cloud wins if it's newer than local
+      if (cloudTs >= localTs) {
+        window.S.lista = cloudItems;
+        localStorage.setItem('mercado_lista_ts', cloudTs.toString());
+        window.saveState();
+        window.renderLista && window.renderLista();
+        window.updateBadge();
+        window.renderCats();
+        console.log('Lista loaded from cloud:', cloudItems.length, 'items');
+      } else {
+        console.log('Local lista is newer, keeping local');
+      }
     }
   } catch(e) { console.error('lista pull error', e); }
 }
@@ -1842,12 +1856,19 @@ function startListaRealtimeSync() {
       const data = snap.data();
       // Ignore if this device just pushed
       if (data.updatedBy === window._deviceId) return;
-      window.S.lista = data.items || [];
-      window.saveState();
-      window.renderLista && window.renderLista();
-      window.updateBadge();
-      window.renderCats();
-      setSyncStatus('ok', 'Lista atualizada');
+      const cloudTs = data.updatedAt || 0;
+      const localTs = parseInt(localStorage.getItem('mercado_lista_ts') || '0');
+      // Only update if cloud version is newer
+      if (cloudTs > localTs) {
+        window.S.lista = data.items || [];
+        localStorage.setItem('mercado_lista_ts', cloudTs.toString());
+        window.saveState();
+        window.renderLista && window.renderLista();
+        window.updateBadge();
+        window.renderCats();
+        setSyncStatus('ok', 'Lista atualizada');
+        console.log('Lista updated from cloud:', data.items.length, 'items');
+      }
     },
     (err) => console.error('lista snapshot error', err)
   );
