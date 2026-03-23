@@ -1053,25 +1053,21 @@ let _editCatId = null, _selIcon = ICONS[0], _selColor = COLORS[0];
 
 function openNewCat() {
   if (!requireGroup()) return;
-  checkGroupPin(function() {
-    _editCatId = null; _selIcon = ICONS[0]; _selColor = COLORS[0];
-    document.getElementById('mCatTitle').textContent = 'Nova Categoria';
-    document.getElementById('mCatNome').value = '';
-    document.getElementById('mCatDeleteBtn').style.display = 'none';
-    buildPickers(); openModal('mCat');
-  });
+  _editCatId = null; _selIcon = ICONS[0]; _selColor = COLORS[0];
+  document.getElementById('mCatTitle').textContent = 'Nova Categoria';
+  document.getElementById('mCatNome').value = '';
+  document.getElementById('mCatDeleteBtn').style.display = 'none';
+  buildPickers(); openModal('mCat');
 }
 function openEditCat(id) {
   if (!requireGroup()) return;
-  checkGroupPin(function() {
-    _editCatId = id;
-    const cat = S.categories.find(c=>c.id===id);
-    _selIcon = cat.icon; _selColor = cat.color;
-    document.getElementById('mCatTitle').textContent = 'Editar Categoria';
-    document.getElementById('mCatNome').value = cat.name;
-    document.getElementById('mCatDeleteBtn').style.display = 'block';
-    buildPickers(); openModal('mCat');
-  });
+  _editCatId = id;
+  const cat = S.categories.find(c=>c.id===id);
+  _selIcon = cat.icon; _selColor = cat.color;
+  document.getElementById('mCatTitle').textContent = 'Editar Categoria';
+  document.getElementById('mCatNome').value = cat.name;
+  document.getElementById('mCatDeleteBtn').style.display = 'block';
+  buildPickers(); openModal('mCat');
 }
 function buildPickers() {
   document.getElementById('iconPicker').innerHTML = ICONS.map(ic =>
@@ -1152,34 +1148,30 @@ let _editProdId = null, _editProdCatId = null, _tempImg = null;
 
 function openNewProd() {
   if (!requireGroup()) return;
-  checkGroupPin(function() {
-    _editProdId = null; _tempImg = null;
-    document.getElementById('mProdTitle').textContent = 'Novo Produto';
-    document.getElementById('mProdNome').value = '';
-    document.getElementById('mProdObs').value = '';
-    resetImgBox();
-    document.getElementById('mProdDeleteBtn').style.display = 'none';
-    openModal('mProd');
-  });
+  _editProdId = null; _tempImg = null;
+  document.getElementById('mProdTitle').textContent = 'Novo Produto';
+  document.getElementById('mProdNome').value = '';
+  document.getElementById('mProdObs').value = '';
+  resetImgBox();
+  document.getElementById('mProdDeleteBtn').style.display = 'none';
+  openModal('mProd');
 }
 function openEditProd(prodId, catId) {
   if (!requireGroup()) return;
-  checkGroupPin(function() {
-    _editProdId = prodId; _editProdCatId = catId; _tempImg = null;
-    const p = (S.products[catId]||[]).find(x=>x.id===prodId);
-    document.getElementById('mProdTitle').textContent = 'Editar Produto';
-    document.getElementById('mProdNome').value = p.name;
-    document.getElementById('mProdObs').value = p.obs||'';
-    resetImgBox();
-    if (p.img) {
-      const box = document.getElementById('mProdImgBox');
-      const img = document.createElement('img');
-      img.src = p.img;
-      box.appendChild(img);
-    }
-    document.getElementById('mProdDeleteBtn').style.display = 'block';
-    openModal('mProd');
-  });
+  _editProdId = prodId; _editProdCatId = catId; _tempImg = null;
+  const p = (S.products[catId]||[]).find(x=>x.id===prodId);
+  document.getElementById('mProdTitle').textContent = 'Editar Produto';
+  document.getElementById('mProdNome').value = p.name;
+  document.getElementById('mProdObs').value = p.obs||'';
+  resetImgBox();
+  if (p.img) {
+    const box = document.getElementById('mProdImgBox');
+    const img = document.createElement('img');
+    img.src = p.img;
+    box.appendChild(img);
+  }
+  document.getElementById('mProdDeleteBtn').style.display = 'block';
+  openModal('mProd');
 }
 function resetImgBox() {
   document.getElementById('mProdImgBox').innerHTML =
