@@ -2002,16 +2002,9 @@ window.fb_joinGroup = async function() {
   if (!name) { alert('Digite o nome do grupo!'); return; }
   if (!pin)  { alert('Digite o PIN do grupo!');  return; }
   try {
-    console.log('Joining group:', JSON.stringify(name), 'length:', name.length);
     const snap = await getDoc(doc(db, 'grupos', name));
-    console.log('snap.exists():', snap.exists());
-    if (snap.exists()) {
-      const d = snap.data();
-      console.log('data keys:', Object.keys(d));
-      console.log('has pin:', !!d.pin, 'pin value:', d.pin ? '(set)' : '(empty)');
-    }
     if (!snap.exists() || !snap.data().pin) {
-      alert('Grupo "' + name + '" não encontrado! (exists:' + snap.exists() + ')');
+      alert('Grupo "' + name + '" n\u00e3o encontrado!');
       return;
     }
     if (snap.data().pin !== pin) {
