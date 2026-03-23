@@ -2208,15 +2208,49 @@ window.fb_importFromGroup = async function() {
     // Push to cloud
     if (window.pushToCloud) await window.pushToCloud();
 
-    // Clear inputs
+    // Import lista atual if requested
+    const importLista = document.getElementById('importLista') && document.getElementById('importLista').checked;
+    if (importLista) {
+      try {
+        const srcListaSnap = await getDoc(doc(db, 'grupos', srcName, 'listaAtual', 'current'));
+        if (srcListaSnap.exists()) {
+          window.S.lista = srcListaSnap.data().items || [];
+          window.saveState();
+          await setDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'), {
+            items: window.S.lista, updatedAt: Date.now(), updatedBy: window._deviceId
+          }, { merge: true });
+        }
+      } catch(e2) { console.warn('lista import:', e2); }
+    }
+
+    // Import saved lists if requested
+    const importSaved = document.getElementById('importSaved') && document.getElementById('importSaved').checked;
+    if (importSaved) {
+      try {
+        const srcSavedSnap = await getDocs(collection(db, 'grupos', srcName, 'listas'));
+        for (const sd of srcSavedSnap.docs) {
+          if (!window.S.saved.find(function(l) { return l.id === sd.id; })) {
+            window.S.saved.push(sd.data());
+            await setDoc(doc(db, 'grupos', GROUP_ID, 'listas', sd.id), sd.data());
+          }
+        }
+        window.saveState();
+      } catch(e3) { console.warn('saved import:', e3); }
+    }
+
+        // Clear inputs
     document.getElementById('importGroupName').value = '';
     document.getElementById('importGroupPin').value  = '';
 
     closeModal('mBackup');
     window.renderCats && window.renderCats();
     window.updateBadge && window.updateBadge();
-    setSyncStatus('ok', 'Importação concluída!');
-    toast('✅ ' + srcCats.length + ' categorias importadas de "' + srcName + '"!');
+    setSyncStatus('ok', 'Importa\u00e7\u00e3o conclu\u00edda!');
+    window.renderLista && window.renderLista();
+    var msg = '\u2705 ' + srcCats.length + ' categorias';
+    if (importLista) msg += ' + lista atual';
+    if (importSaved) msg += ' + listas salvas';
+    toast(msg + ' importados!');
 
   } catch(e) {
     setSyncStatus('error', 'Erro na importação');
@@ -2368,6 +2402,18 @@ if ('serviceWorker' in navigator) {
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="importMerge" checked style="width:16px;height:16px">
           Mesclar com categorias existentes (desmarque para substituir tudo)
+        </label>
+      </div>
+      <div style="margin-top:6px;margin-bottom:4px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="importLista" style="width:16px;height:16px">
+          Importar também a lista atual do grupo de origem
+        </label>
+      </div>
+      <div style="margin-top:6px;margin-bottom:4px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="importSaved" style="width:16px;height:16px">
+          Importar também as listas salvas
         </label>
       </div>
       <button class="btn-primary" style="margin-top:8px;background:#e65100" onclick="importFromGroup()">📥 Importar categorias e produtos</button>
