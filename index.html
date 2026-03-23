@@ -653,6 +653,7 @@
       <div style="font-size:64px;margin-bottom:12px">🛒</div>
       <div style="font-family:Nunito,sans-serif;font-size:28px;font-weight:900;color:var(--accent)">Mercado App</div>
       <div style="font-size:14px;color:var(--text-muted);margin-top:6px">Para usar o app, crie ou entre em um grupo familiar</div>
+      <div id="firebaseStatus" style="font-size:12px;color:#ff7043;margin-top:8px;font-weight:700">⏳ Conectando ao servidor...</div>
     </div>
 
     <!-- CREATE GROUP -->
@@ -662,7 +663,7 @@
       <input class="form-input" id="newGroupName" placeholder="Nome do grupo (ex: familia-silva)" style="margin-bottom:10px">
       <input class="form-input" id="newGroupPin" type="password" placeholder="PIN (mínimo 4 dígitos)" style="margin-bottom:10px">
       <input class="form-input" id="newGroupPin2" type="password" placeholder="Confirmar PIN">
-      <button class="btn-primary" style="margin-top:12px" onclick="createGroup()">✅ Criar grupo</button>
+      <button class="btn-primary" style="margin-top:12px" id="btnCreateGroup" onclick="callWhenReady('createGroup')">✅ Criar grupo</button>
     </div>
 
     <!-- JOIN GROUP -->
@@ -671,7 +672,7 @@
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Use o nome e PIN do grupo da sua família</div>
       <input class="form-input" id="joinGroupName" placeholder="Nome do grupo" style="margin-bottom:10px">
       <input class="form-input" id="joinGroupPin" type="password" placeholder="PIN do grupo">
-      <button class="btn-primary" style="margin-top:12px" onclick="joinGroup()">🔗 Entrar no grupo</button>
+      <button class="btn-primary" style="margin-top:12px" id="btnJoinGroup" onclick="callWhenReady('joinGroup')">🔗 Entrar no grupo</button>
     </div>
   </div>
 </div>
@@ -855,6 +856,33 @@ function openBackup() {
     if (el) el.textContent = localStorage.getItem('mercado_group') || '';
     openModal('mBackup');
   });
+}
+
+// Wait for Firebase module to load before calling group functions
+function callWhenReady(fnName) {
+  var fn = window[fnName];
+  if (typeof fn === 'function') {
+    fn();
+  } else {
+    // Firebase not ready yet - wait and retry
+    var btn = document.getElementById('btn' + fnName.charAt(0).toUpperCase() + fnName.slice(1) + 'Group');
+    var orig = btn ? btn.textContent : '';
+    if (btn) btn.textContent = '⏳ Carregando...';
+    var attempts = 0;
+    var interval = setInterval(function() {
+      attempts++;
+      var fn2 = window[fnName];
+      if (typeof fn2 === 'function') {
+        clearInterval(interval);
+        if (btn) btn.textContent = orig;
+        fn2();
+      } else if (attempts > 30) {
+        clearInterval(interval);
+        if (btn) btn.textContent = orig;
+        alert('Erro ao carregar o app. Verifique sua conexão com a internet e recarregue a página.');
+      }
+    }, 200);
+  }
 }
 
 function requireGroup() {
@@ -2228,6 +2256,10 @@ window.pullSavedListsFromCloud = pullSavedListsFromCloud;
 
 // ── Bootstrap ────────────────────────────────────────────
 async function firebaseInit() {
+  // Signal that Firebase is ready
+  var statusEl = document.getElementById('firebaseStatus');
+  if (statusEl) statusEl.textContent = '✅ Conectado!';
+  setTimeout(function() { if (statusEl) statusEl.style.display='none'; }, 2000);
   const savedGroup = localStorage.getItem('mercado_group');
   if (!savedGroup) {
     // No group — show welcome screen
