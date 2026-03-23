@@ -896,11 +896,13 @@ function saveState() {
     clearTimeout(window._pushTimer);
     window._pushTimer = setTimeout(window.pushToCloud, 2000);
   }
-  // Push lista atual to cloud (debounced, faster for real-time feel)
-  if (window.pushListaToCloud) {
-    clearTimeout(window._listaTimer);
-    window._listaTimer = setTimeout(window.pushListaToCloud, 800);
-  }
+  // Push lista atual to cloud (debounced)
+  clearTimeout(window._listaTimer);
+  window._listaTimer = setTimeout(function() {
+    if (window.pushListaToCloud) {
+      window.pushListaToCloud();
+    }
+  }, 800);
 }
 
 // ============================================================
@@ -1805,11 +1807,13 @@ function startRealtimeSync() {
 async function pushListaToCloud() {
   if (!navigator.onLine || !window.S) return;
   try {
+    console.log('Pushing lista to cloud, items:', window.S.lista.length);
     await setDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'), {
       items: window.S.lista,
       updatedAt: Date.now(),
       updatedBy: window._deviceId
     });
+    console.log('Lista pushed OK');
   } catch(e) { console.error('lista push error', e); }
 }
 
