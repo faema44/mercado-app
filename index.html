@@ -858,28 +858,29 @@ function openBackup() {
   });
 }
 
-// Stub functions so onclick works even before Firebase loads
-function createGroup() { callWhenReady('createGroup'); }
-function joinGroup()   { callWhenReady('joinGroup');   }
-function migrateGroup()     { callWhenReady('migrateGroup');     }
-function importFromGroup()  { callWhenReady('importFromGroup');  }
-function switchGroupWithPin() { callWhenReady('switchGroupWithPin'); }
-function leaveGroup()       { callWhenReady('leaveGroup');       }
+// Stub functions — delegate to Firebase window functions when ready
+function createGroup()        { callFirebase('createGroup'); }
+function joinGroup()          { callFirebase('joinGroup'); }
+function migrateGroup()       { callFirebase('migrateGroup'); }
+function importFromGroup()    { callFirebase('importFromGroup'); }
+function switchGroupWithPin() { callFirebase('switchGroupWithPin'); }
+function leaveGroup()         { callFirebase('leaveGroup'); }
 
 // Wait for Firebase module to load before calling group functions
-function callWhenReady(fnName) {
-  var fn = window[fnName];
+function callFirebase(fnName) {
+  // Firebase exposes functions as window['fb_' + name] to avoid conflicts
+  var key = 'fb_' + fnName;
+  var fn = window[key];
   if (typeof fn === 'function') {
     fn();
   } else {
-    // Firebase not ready yet - wait and retry
-    var btn = document.getElementById('btn' + fnName.charAt(0).toUpperCase() + fnName.slice(1) + 'Group');
+    var btn = document.getElementById('btnCreate') || document.getElementById('btnJoin');
     var orig = btn ? btn.textContent : '';
-    if (btn) btn.textContent = '⏳ Carregando...';
+    if (btn) btn.textContent = '⏳ Aguarde...';
     var attempts = 0;
     var interval = setInterval(function() {
       attempts++;
-      var fn2 = window[fnName];
+      var fn2 = window[key];
       if (typeof fn2 === 'function') {
         clearInterval(interval);
         if (btn) btn.textContent = orig;
@@ -887,7 +888,7 @@ function callWhenReady(fnName) {
       } else if (attempts > 30) {
         clearInterval(interval);
         if (btn) btn.textContent = orig;
-        alert('Erro ao carregar o app. Verifique sua conexão com a internet e recarregue a página.');
+        alert('Sem conexão com o servidor. Verifique a internet e recarregue a página.');
       }
     }, 200);
   }
@@ -1957,7 +1958,7 @@ async function loadGroup(groupId) {
   if (el) el.textContent = GROUP_ID;
 }
 
-window.createGroup = async function() {
+window.fb_createGroup = async function() {
   const name = document.getElementById('newGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
   const pin  = document.getElementById('newGroupPin').value.trim();
   const pin2 = document.getElementById('newGroupPin2').value.trim();
@@ -1995,7 +1996,7 @@ window.createGroup = async function() {
   }
 };
 
-window.joinGroup = async function() {
+window.fb_joinGroup = async function() {
   const name = document.getElementById('joinGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
   const pin  = document.getElementById('joinGroupPin').value.trim();
   if (!name) { alert('Digite o nome do grupo!'); return; }
@@ -2024,7 +2025,7 @@ window.joinGroup = async function() {
   }
 };
 
-window.switchGroupWithPin = async function() {
+window.fb_switchGroupWithPin = async function() {
   const name = document.getElementById('groupInput').value.trim().toLowerCase().replace(/\s+/g,'-');
   const pin  = document.getElementById('groupPinInput').value.trim();
   if (!name) { toast('Digite o nome do grupo!'); return; }
@@ -2054,7 +2055,7 @@ window.switchGroupWithPin = async function() {
   }
 };
 
-window.leaveGroup = function() {
+window.fb_leaveGroup = function() {
   if (!confirm('Sair do grupo "' + GROUP_ID + '"? Você precisará do PIN para entrar novamente.')) return;
   localStorage.removeItem('mercado_group');
   localStorage.removeItem('mercado_group_pin');
@@ -2067,7 +2068,7 @@ window.leaveGroup = function() {
 };
 
 // ── MIGRATE GROUP ─────────────────────────────────────────
-window.migrateGroup = async function() {
+window.fb_migrateGroup = async function() {
   const newName = document.getElementById('migrateGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
   const newPin  = document.getElementById('migrateGroupPin').value.trim();
   const newPin2 = document.getElementById('migrateGroupPin2').value.trim();
@@ -2143,7 +2144,7 @@ window.migrateGroup = async function() {
 };
 
 // ── IMPORT FROM GROUP ─────────────────────────────────────
-window.importFromGroup = async function() {
+window.fb_importFromGroup = async function() {
   const srcName = document.getElementById('importGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
   const srcPin  = document.getElementById('importGroupPin').value.trim();
   const merge   = document.getElementById('importMerge').checked;
@@ -2171,17 +2172,10 @@ window.importFromGroup = async function() {
     }
 
     const action = merge ? 'mesclar' : 'substituir';
-    if (!confirm(
-      'Importar do grupo "' + srcName + '"?
-
-' +
-      '• ' + srcCats.length + ' categorias
-' +
-      '• ' + Object.values(srcProds).flat().length + ' produtos
-
-' +
-      'Ação: ' + action.toUpperCase() + ' com os dados atuais.'
-    )) return;
+    if (!confirm('Importar do grupo "' + srcName + '"?\n\n' +
+      '\u2022 ' + srcCats.length + ' categorias\n' +
+      '\u2022 ' + Object.values(srcProds).flat().length + ' produtos\n\n' +
+      'A\u00e7\u00e3o: ' + action.toUpperCase() + ' com os dados atuais.')) return;
 
     setSyncStatus('syncing', 'Importando...');
 
