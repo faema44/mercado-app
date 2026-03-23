@@ -2069,79 +2069,64 @@ window.fb_leaveGroup = function() {
 
 // ── MIGRATE GROUP ─────────────────────────────────────────
 window.fb_migrateGroup = async function() {
-  const newName = document.getElementById('migrateGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
+  const newName = document.getElementById('migrateGroupName').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
   const newPin  = document.getElementById('migrateGroupPin').value.trim();
   const newPin2 = document.getElementById('migrateGroupPin2').value.trim();
 
   if (!newName) { toast('Digite o nome do novo grupo!'); return; }
-  if (newName === GROUP_ID) { toast('O nome deve ser diferente do grupo atual!'); return; }
-  if (!/^[a-z0-9-]+$/.test(newName)) { toast('Use apenas letras, números e hífen!'); return; }
-  if (!newPin || newPin.length < 4) { toast('PIN deve ter mínimo 4 dígitos!'); return; }
-  if (newPin !== newPin2) { toast('Os PINs não conferem!'); return; }
+  if (newName === GROUP_ID) { toast('O nome deve ser diferente do atual!'); return; }
+  if (!/^[a-z0-9-]+$/.test(newName)) { toast('Use apenas letras, n\u00fameros e h\u00edfen!'); return; }
+  if (!newPin || newPin.length < 4) { toast('PIN deve ter m\u00ednimo 4 d\u00edgitos!'); return; }
+  if (newPin !== newPin2) { toast('Os PINs n\u00e3o conferem!'); return; }
 
   try {
-    // Check if new group name already exists
+    const sourceGroup = GROUP_ID;
     const existing = await getDoc(doc(db, 'grupos', newName));
     if (existing.exists() && existing.data().pin) {
-      toast('Já existe um grupo com este nome!'); return;
+      toast('J\u00e1 existe um grupo com este nome!'); return;
     }
+    setSyncStatus('syncing', 'Migrando...');
 
-    setSyncStatus('syncing', 'Migrando dados...');
-
-    // Get current group full data
-    const currentSnap = await getDoc(doc(db, 'grupos', GROUP_ID));
+    const currentSnap = await getDoc(doc(db, 'grupos', sourceGroup));
     const currentData = currentSnap.exists() ? currentSnap.data() : {};
+    const listaSnap   = await getDoc(doc(db, 'grupos', sourceGroup, 'listaAtual', 'current'));
+    const listaData   = listaSnap.exists() ? listaSnap.data() : null;
+    const listsSnap   = await getDocs(collection(db, 'grupos', sourceGroup, 'listas'));
+    const savedLists  = listsSnap.docs.map(function(d) { return { id: d.id, data: d.data() }; });
 
-    // Get current lista
-    const listaSnap = await getDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'));
-    const listaData = listaSnap.exists() ? listaSnap.data() : null;
-
-    // Get saved lists
-    const listsSnap = await getDocs(collection(db, 'grupos', GROUP_ID, 'listas'));
-
-    // Create new group with all data
     await setDoc(doc(db, 'grupos', newName), {
-      pin:        newPin,
-      createdAt:  Date.now(),
+      pin: newPin, createdAt: Date.now(),
       categories: currentData.categories || [],
       products:   currentData.products   || {},
       updatedAt:  Date.now()
     });
-
-    // Copy lista atual
     if (listaData) {
       await setDoc(doc(db, 'grupos', newName, 'listaAtual', 'current'), listaData);
     }
-
-    // Copy saved lists
-    for (const listDoc2 of listsSnap.docs) {
-      await setDoc(doc(db, 'grupos', newName, 'listas', listDoc2.id), listDoc2.data());
+    for (var i = 0; i < savedLists.length; i++) {
+      await setDoc(doc(db, 'grupos', newName, 'listas', savedLists[i].id), savedLists[i].data);
     }
 
-    // Switch to new group
     localStorage.setItem('mercado_group', newName);
     localStorage.setItem('mercado_group_pin', newPin);
     localStorage.removeItem('mercado_lista_ts');
     GROUP_ID = newName;
-    window.window._sessionUnlocked = true;
-
-    // Clear inputs
+    window._sessionUnlocked = true;
     document.getElementById('migrateGroupName').value = '';
-    document.getElementById('migrateGroupPin').value = '';
+    document.getElementById('migrateGroupPin').value  = '';
     document.getElementById('migrateGroupPin2').value = '';
-
     closeModal('mBackup');
     await loadGroup(newName);
     window.renderCats && window.renderCats();
     window.updateBadge && window.updateBadge();
-    setSyncStatus('ok', 'Migração concluída!');
-    toast('✅ Dados migrados para "' + newName + '"!');
-
+    setSyncStatus('ok', 'Migra\u00e7\u00e3o conclu\u00edda!');
+    toast('\u2705 Migrado para "' + newName + '"!');
   } catch(e) {
-    setSyncStatus('error', 'Erro na migração');
+    setSyncStatus('error', 'Erro');
     alert('Erro ao migrar: ' + e.message);
   }
 };
+
 
 // ── IMPORT FROM GROUP ─────────────────────────────────────
 window.fb_importFromGroup = async function() {
