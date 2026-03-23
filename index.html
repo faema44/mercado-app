@@ -646,6 +646,36 @@
   </button>
 </div>
 
+<!-- WELCOME SCREEN (shown when no group) -->
+<div id="welcomeScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:500;overflow-y:auto;padding:30px 20px 40px">
+  <div style="max-width:400px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:32px;margin-top:20px">
+      <div style="font-size:64px;margin-bottom:12px">🛒</div>
+      <div style="font-family:Nunito,sans-serif;font-size:28px;font-weight:900;color:var(--accent)">Mercado App</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-top:6px">Para usar o app, crie ou entre em um grupo familiar</div>
+    </div>
+
+    <!-- CREATE GROUP -->
+    <div style="background:var(--surface);border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 4px 16px rgba(0,0,0,0.07)">
+      <div style="font-family:Nunito,sans-serif;font-size:17px;font-weight:900;margin-bottom:4px">🏠 Criar novo grupo</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Crie um grupo para sua família</div>
+      <input class="form-input" id="newGroupName" placeholder="Nome do grupo (ex: familia-silva)" style="margin-bottom:10px">
+      <input class="form-input" id="newGroupPin" type="password" placeholder="PIN (mínimo 4 dígitos)" style="margin-bottom:10px">
+      <input class="form-input" id="newGroupPin2" type="password" placeholder="Confirmar PIN">
+      <button class="btn-primary" style="margin-top:12px" onclick="createGroup()">✅ Criar grupo</button>
+    </div>
+
+    <!-- JOIN GROUP -->
+    <div style="background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 4px 16px rgba(0,0,0,0.07)">
+      <div style="font-family:Nunito,sans-serif;font-size:17px;font-weight:900;margin-bottom:4px">🔗 Entrar em grupo existente</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Use o nome e PIN do grupo da sua família</div>
+      <input class="form-input" id="joinGroupName" placeholder="Nome do grupo" style="margin-bottom:10px">
+      <input class="form-input" id="joinGroupPin" type="password" placeholder="PIN do grupo">
+      <button class="btn-primary" style="margin-top:12px" onclick="joinGroup()">🔗 Entrar no grupo</button>
+    </div>
+  </div>
+</div>
+
 <!-- SCREENS -->
 <div class="screens">
 
@@ -817,67 +847,43 @@ function loadState() {
 // ============================================================
 // PIN PROTECTION
 // ============================================================
-var _pinUnlocked = false;
 
 function openBackup() {
-  var pin = localStorage.getItem("mercado_pin");
-  if (pin && !_pinUnlocked) {
-    var entered = prompt("🔐 Digite o PIN para acessar as configurações:");
-    if (entered === null) return;
-    if (entered !== pin) { toast("❌ PIN incorreto!"); return; }
-    _pinUnlocked = true;
-    toast("✅ Desbloqueado!");
-  }
-  initPin();
-  openModal("mBackup");
+  if (!requireGroup()) return;
+  checkGroupPin(function() {
+    var el = document.getElementById('currentGroupLabel');
+    if (el) el.textContent = localStorage.getItem('mercado_group') || '';
+    openModal('mBackup');
+  });
 }
 
-function initPin() {
-  var pin = localStorage.getItem("mercado_pin");
-  var el = document.getElementById("pinStatus");
-  var btnRemove = document.getElementById("btnRemovePin");
-  if (pin) {
-    if (el) el.innerHTML = "<span style=\"color:#2e7d32;font-weight:700\">✅ PIN ativado</span>";
-    if (btnRemove) btnRemove.style.display = "block";
-    _pinUnlocked = false;
+function requireGroup() {
+  var grp = localStorage.getItem('mercado_group');
+  if (!grp) {
+    toast('Entre em um grupo primeiro!');
+    document.getElementById('welcomeScreen').style.display = 'block';
+    return false;
+  }
+  return true;
+}
+
+// PIN unlocked for this session (reset on page reload)
+var _sessionUnlocked = false;
+
+function checkGroupPin(onSuccess) {
+  if (!requireGroup()) return;
+  if (_sessionUnlocked) { onSuccess(); return; }
+  var savedPin = localStorage.getItem('mercado_group_pin');
+  if (!savedPin) { onSuccess(); return; } // no PIN cached yet
+  var entered = prompt('🔐 Digite o PIN do grupo "' + localStorage.getItem('mercado_group') + '":');
+  if (entered === null) return;
+  if (entered === savedPin) {
+    _sessionUnlocked = true;
+    toast('✅ Desbloqueado!');
+    onSuccess();
   } else {
-    if (el) el.innerHTML = "<span style=\"color:#888\">Sem PIN — edição livre</span>";
-    if (btnRemove) btnRemove.style.display = "none";
-    _pinUnlocked = true;
+    toast('❌ PIN incorreto!');
   }
-}
-
-function setPin() {
-  var val = document.getElementById("pinInput").value.trim();
-  if (!val || val.length < 4) { toast("PIN deve ter pelo menos 4 dígitos!"); return; }
-  localStorage.setItem("mercado_pin", val);
-  _pinUnlocked = true;
-  document.getElementById("pinInput").value = "";
-  initPin();
-  toast("PIN ativado! 🔐");
-}
-
-function removePin() {
-  if (!checkPin()) return;
-  localStorage.removeItem("mercado_pin");
-  _pinUnlocked = true;
-  initPin();
-  toast("PIN removido! 🔓");
-}
-
-function checkPin() {
-  var pin = localStorage.getItem("mercado_pin");
-  if (!pin) return true;
-  if (_pinUnlocked) return true;
-  var entered = prompt("🔐 Digite o PIN para editar:");
-  if (entered === null) return false;
-  if (entered === pin) {
-    _pinUnlocked = true;
-    toast("✅ Desbloqueado!");
-    return true;
-  }
-  toast("❌ PIN incorreto!");
-  return false;
 }
 
 function pushLista() {
@@ -1009,22 +1015,26 @@ function renderCats() {
 let _editCatId = null, _selIcon = ICONS[0], _selColor = COLORS[0];
 
 function openNewCat() {
-  if (!checkPin()) return;
-  _editCatId = null; _selIcon = ICONS[0]; _selColor = COLORS[0];
-  document.getElementById('mCatTitle').textContent = 'Nova Categoria';
-  document.getElementById('mCatNome').value = '';
-  document.getElementById('mCatDeleteBtn').style.display = 'none';
-  buildPickers(); openModal('mCat');
+  if (!requireGroup()) return;
+  checkGroupPin(function() {
+    _editCatId = null; _selIcon = ICONS[0]; _selColor = COLORS[0];
+    document.getElementById('mCatTitle').textContent = 'Nova Categoria';
+    document.getElementById('mCatNome').value = '';
+    document.getElementById('mCatDeleteBtn').style.display = 'none';
+    buildPickers(); openModal('mCat');
+  });
 }
 function openEditCat(id) {
-  if (!checkPin()) return;
-  _editCatId = id;
-  const cat = S.categories.find(c=>c.id===id);
-  _selIcon = cat.icon; _selColor = cat.color;
-  document.getElementById('mCatTitle').textContent = 'Editar Categoria';
-  document.getElementById('mCatNome').value = cat.name;
-  document.getElementById('mCatDeleteBtn').style.display = 'block';
-  buildPickers(); openModal('mCat');
+  if (!requireGroup()) return;
+  checkGroupPin(function() {
+    _editCatId = id;
+    const cat = S.categories.find(c=>c.id===id);
+    _selIcon = cat.icon; _selColor = cat.color;
+    document.getElementById('mCatTitle').textContent = 'Editar Categoria';
+    document.getElementById('mCatNome').value = cat.name;
+    document.getElementById('mCatDeleteBtn').style.display = 'block';
+    buildPickers(); openModal('mCat');
+  });
 }
 function buildPickers() {
   document.getElementById('iconPicker').innerHTML = ICONS.map(ic =>
@@ -1104,31 +1114,35 @@ function renderProds(catId) {
 let _editProdId = null, _editProdCatId = null, _tempImg = null;
 
 function openNewProd() {
-  if (!checkPin()) return;
-  _editProdId = null; _tempImg = null;
-  document.getElementById('mProdTitle').textContent = 'Novo Produto';
-  document.getElementById('mProdNome').value = '';
-  document.getElementById('mProdObs').value = '';
-  resetImgBox();
-  document.getElementById('mProdDeleteBtn').style.display = 'none';
-  openModal('mProd');
+  if (!requireGroup()) return;
+  checkGroupPin(function() {
+    _editProdId = null; _tempImg = null;
+    document.getElementById('mProdTitle').textContent = 'Novo Produto';
+    document.getElementById('mProdNome').value = '';
+    document.getElementById('mProdObs').value = '';
+    resetImgBox();
+    document.getElementById('mProdDeleteBtn').style.display = 'none';
+    openModal('mProd');
+  });
 }
 function openEditProd(prodId, catId) {
-  if (!checkPin()) return;
-  _editProdId = prodId; _editProdCatId = catId; _tempImg = null;
-  const p = (S.products[catId]||[]).find(x=>x.id===prodId);
-  document.getElementById('mProdTitle').textContent = 'Editar Produto';
-  document.getElementById('mProdNome').value = p.name;
-  document.getElementById('mProdObs').value = p.obs||'';
-  resetImgBox();
-  if (p.img) {
-    const box = document.getElementById('mProdImgBox');
-    const img = document.createElement('img');
-    img.src = p.img;
-    box.appendChild(img);
-  }
-  document.getElementById('mProdDeleteBtn').style.display = 'block';
-  openModal('mProd');
+  if (!requireGroup()) return;
+  checkGroupPin(function() {
+    _editProdId = prodId; _editProdCatId = catId; _tempImg = null;
+    const p = (S.products[catId]||[]).find(x=>x.id===prodId);
+    document.getElementById('mProdTitle').textContent = 'Editar Produto';
+    document.getElementById('mProdNome').value = p.name;
+    document.getElementById('mProdObs').value = p.obs||'';
+    resetImgBox();
+    if (p.img) {
+      const box = document.getElementById('mProdImgBox');
+      const img = document.createElement('img');
+      img.src = p.img;
+      box.appendChild(img);
+    }
+    document.getElementById('mProdDeleteBtn').style.display = 'block';
+    openModal('mProd');
+  });
 }
 function resetImgBox() {
   document.getElementById('mProdImgBox').innerHTML =
@@ -1657,7 +1671,6 @@ function importarDados(event) {
 loadState();
 renderCats();
 updateBadge();
-initPin();
 
 // Expose to window so Firebase module (type=module, runs earlier) can access
 window.S           = S;
@@ -1665,6 +1678,10 @@ window.saveState   = saveState;
 window.renderCats  = renderCats;
 window.updateBadge = updateBadge;
 window.renderLista = renderLista;
+Object.defineProperty(window, '_sessionUnlocked', {
+  get: function() { return _sessionUnlocked; },
+  set: function(v) { _sessionUnlocked = v; }
+});
 
 // Signal Firebase that the app is ready
 window._appReady = true;
@@ -1699,7 +1716,7 @@ const db    = getFirestore(fbApp);
 // ── Document references ──────────────────────────────────
 // All users share the same categories & products
 // Each "group" can be identified by a groupId stored locally
-let GROUP_ID = localStorage.getItem('mercado_group') || 'default';
+let GROUP_ID = localStorage.getItem('mercado_group') || '';
 
 // Unique device ID to avoid self-triggering on lista updates
 if (!localStorage.getItem('mercado_device_id')) {
@@ -1893,20 +1910,312 @@ async function pullSavedListsFromCloud() {
 }
 
 // ── GROUP switching ──────────────────────────────────────
-window.switchGroup = function(newId) {
-  GROUP_ID = newId.trim() || 'default';
-  localStorage.setItem('mercado_group', GROUP_ID);
+// ── GROUP MANAGEMENT ─────────────────────────────────────
+async function loadGroup(groupId) {
+  GROUP_ID = groupId;
   if (unsubscribe) unsubscribe();
   if (_listaUnsubscribe) _listaUnsubscribe();
-  pullFromCloud().then(() => {
-    pullSavedListsFromCloud();
-    pullListaFromCloud().then(() => {
-      startRealtimeSync();
-      startListaRealtimeSync();
+  await pullFromCloud();
+  await pullSavedListsFromCloud();
+  await pullListaFromCloud();
+  startRealtimeSync();
+  startListaRealtimeSync();
+  const el = document.getElementById('currentGroupLabel');
+  if (el) el.textContent = GROUP_ID;
+}
+
+window.createGroup = async function() {
+  const name = document.getElementById('newGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
+  const pin  = document.getElementById('newGroupPin').value.trim();
+  const pin2 = document.getElementById('newGroupPin2').value.trim();
+  if (!name)        { alert('Digite um nome para o grupo!'); return; }
+  if (name === 'default') { alert('Este nome é reservado, escolha outro.'); return; }
+  if (!/^[a-z0-9-]+$/.test(name)) { alert('Use apenas letras, números e hífen no nome.'); return; }
+  if (!pin || pin.length < 4) { alert('PIN deve ter pelo menos 4 dígitos!'); return; }
+  if (pin !== pin2) { alert('Os PINs não conferem!'); return; }
+  try {
+    // Check if group already exists
+    const snap = await getDoc(doc(db, 'grupos', name));
+    if (snap.exists() && snap.data().pin) {
+      alert('Já existe um grupo com este nome! Escolha outro nome ou entre no grupo existente.');
+      return;
+    }
+    // Create group with PIN
+    await setDoc(doc(db, 'grupos', name), {
+      pin: pin,
+      createdAt: Date.now(),
+      categories: window.S ? window.S.categories : [],
+      products:   window.S ? window.S.products   : {}
     });
-  });
-  document.getElementById('currentGroupLabel').textContent = GROUP_ID;
-  toast('Grupo alterado para: ' + GROUP_ID);
+    localStorage.setItem('mercado_group', name);
+    localStorage.setItem('mercado_group_pin', pin);
+    localStorage.removeItem('mercado_lista_ts');
+    window.GROUP_ID_REF = name;
+    GROUP_ID = name;
+    document.getElementById('welcomeScreen').style.display = 'none';
+    await loadGroup(name);
+    window.renderCats && window.renderCats();
+    window.updateBadge && window.updateBadge();
+    toast('Grupo "' + name + '" criado! 🎉');
+  } catch(e) {
+    alert('Erro ao criar grupo: ' + e.message);
+  }
+};
+
+window.joinGroup = async function() {
+  const name = document.getElementById('joinGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
+  const pin  = document.getElementById('joinGroupPin').value.trim();
+  if (!name) { alert('Digite o nome do grupo!'); return; }
+  if (!pin)  { alert('Digite o PIN do grupo!');  return; }
+  try {
+    const snap = await getDoc(doc(db, 'grupos', name));
+    if (!snap.exists() || !snap.data().pin) {
+      alert('Grupo "' + name + '" não encontrado!');
+      return;
+    }
+    if (snap.data().pin !== pin) {
+      alert('PIN incorreto!');
+      return;
+    }
+    localStorage.setItem('mercado_group', name);
+    localStorage.setItem('mercado_group_pin', pin);
+    localStorage.removeItem('mercado_lista_ts');
+    GROUP_ID = name;
+    window._sessionUnlocked = false;
+    document.getElementById('welcomeScreen').style.display = 'none';
+    await loadGroup(name);
+    window.renderCats && window.renderCats();
+    window.updateBadge && window.updateBadge();
+    toast('Bem-vindo ao grupo "' + name + '"! 👋');
+  } catch(e) {
+    alert('Erro ao entrar no grupo: ' + e.message);
+  }
+};
+
+window.switchGroupWithPin = async function() {
+  const name = document.getElementById('groupInput').value.trim().toLowerCase().replace(/\s+/g,'-');
+  const pin  = document.getElementById('groupPinInput').value.trim();
+  if (!name) { toast('Digite o nome do grupo!'); return; }
+  if (!pin)  { toast('Digite o PIN do grupo!');  return; }
+  try {
+    const snap = await getDoc(doc(db, 'grupos', name));
+    if (!snap.exists() || !snap.data().pin) {
+      toast('Grupo não encontrado!'); return;
+    }
+    if (snap.data().pin !== pin) {
+      toast('PIN incorreto!'); return;
+    }
+    localStorage.setItem('mercado_group', name);
+    localStorage.setItem('mercado_group_pin', pin);
+    localStorage.removeItem('mercado_lista_ts');
+    GROUP_ID = name;
+    if (window.S) { window.S.lista = []; window.S.saved = []; }
+    closeModal('mBackup');
+    await loadGroup(name);
+    window.renderCats && window.renderCats();
+    window.updateBadge && window.updateBadge();
+    const el = document.getElementById('currentGroupLabel');
+    if (el) el.textContent = GROUP_ID;
+    toast('Grupo alterado para: ' + name);
+  } catch(e) {
+    toast('Erro: ' + e.message);
+  }
+};
+
+window.leaveGroup = function() {
+  if (!confirm('Sair do grupo "' + GROUP_ID + '"? Você precisará do PIN para entrar novamente.')) return;
+  localStorage.removeItem('mercado_group');
+  localStorage.removeItem('mercado_group_pin');
+  localStorage.removeItem('mercado_lista_ts');
+  if (unsubscribe) unsubscribe();
+  if (_listaUnsubscribe) _listaUnsubscribe();
+  document.getElementById('welcomeScreen').style.display = 'block';
+  closeModal('mBackup');
+  toast('Você saiu do grupo');
+};
+
+// ── MIGRATE GROUP ─────────────────────────────────────────
+window.migrateGroup = async function() {
+  const newName = document.getElementById('migrateGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
+  const newPin  = document.getElementById('migrateGroupPin').value.trim();
+  const newPin2 = document.getElementById('migrateGroupPin2').value.trim();
+
+  if (!newName) { toast('Digite o nome do novo grupo!'); return; }
+  if (newName === GROUP_ID) { toast('O nome deve ser diferente do grupo atual!'); return; }
+  if (!/^[a-z0-9-]+$/.test(newName)) { toast('Use apenas letras, números e hífen!'); return; }
+  if (!newPin || newPin.length < 4) { toast('PIN deve ter mínimo 4 dígitos!'); return; }
+  if (newPin !== newPin2) { toast('Os PINs não conferem!'); return; }
+
+  try {
+    // Check if new group name already exists
+    const existing = await getDoc(doc(db, 'grupos', newName));
+    if (existing.exists() && existing.data().pin) {
+      toast('Já existe um grupo com este nome!'); return;
+    }
+
+    setSyncStatus('syncing', 'Migrando dados...');
+
+    // Get current group full data
+    const currentSnap = await getDoc(doc(db, 'grupos', GROUP_ID));
+    const currentData = currentSnap.exists() ? currentSnap.data() : {};
+
+    // Get current lista
+    const listaSnap = await getDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'));
+    const listaData = listaSnap.exists() ? listaSnap.data() : null;
+
+    // Get saved lists
+    const listsSnap = await getDocs(collection(db, 'grupos', GROUP_ID, 'listas'));
+
+    // Create new group with all data
+    await setDoc(doc(db, 'grupos', newName), {
+      pin:        newPin,
+      createdAt:  Date.now(),
+      categories: currentData.categories || [],
+      products:   currentData.products   || {},
+      updatedAt:  Date.now()
+    });
+
+    // Copy lista atual
+    if (listaData) {
+      await setDoc(doc(db, 'grupos', newName, 'listaAtual', 'current'), listaData);
+    }
+
+    // Copy saved lists
+    for (const listDoc2 of listsSnap.docs) {
+      await setDoc(doc(db, 'grupos', newName, 'listas', listDoc2.id), listDoc2.data());
+    }
+
+    // Switch to new group
+    localStorage.setItem('mercado_group', newName);
+    localStorage.setItem('mercado_group_pin', newPin);
+    localStorage.removeItem('mercado_lista_ts');
+    GROUP_ID = newName;
+    window._sessionUnlocked = true;
+
+    // Clear inputs
+    document.getElementById('migrateGroupName').value = '';
+    document.getElementById('migrateGroupPin').value = '';
+    document.getElementById('migrateGroupPin2').value = '';
+
+    closeModal('mBackup');
+    await loadGroup(newName);
+    window.renderCats && window.renderCats();
+    window.updateBadge && window.updateBadge();
+    setSyncStatus('ok', 'Migração concluída!');
+    toast('✅ Dados migrados para "' + newName + '"!');
+
+  } catch(e) {
+    setSyncStatus('error', 'Erro na migração');
+    alert('Erro ao migrar: ' + e.message);
+  }
+};
+
+// ── IMPORT FROM GROUP ─────────────────────────────────────
+window.importFromGroup = async function() {
+  const srcName = document.getElementById('importGroupName').value.trim().toLowerCase().replace(/\s+/g,'-');
+  const srcPin  = document.getElementById('importGroupPin').value.trim();
+  const merge   = document.getElementById('importMerge').checked;
+
+  if (!srcName) { toast('Digite o nome do grupo de origem!'); return; }
+  if (srcName === GROUP_ID) { toast('O grupo de origem deve ser diferente do atual!'); return; }
+  if (!srcPin) { toast('Digite o PIN do grupo de origem!'); return; }
+
+  try {
+    // Validate source group
+    const srcSnap = await getDoc(doc(db, 'grupos', srcName));
+    if (!srcSnap.exists() || !srcSnap.data().pin) {
+      toast('Grupo "' + srcName + '" não encontrado!'); return;
+    }
+    if (srcSnap.data().pin !== srcPin) {
+      toast('PIN incorreto para o grupo "' + srcName + '"!'); return;
+    }
+
+    const srcData = srcSnap.data();
+    const srcCats = srcData.categories || [];
+    const srcProds = srcData.products  || {};
+
+    if (srcCats.length === 0) {
+      toast('O grupo de origem não tem categorias!'); return;
+    }
+
+    const action = merge ? 'mesclar' : 'substituir';
+    if (!confirm(
+      'Importar do grupo "' + srcName + '"?
+
+' +
+      '• ' + srcCats.length + ' categorias
+' +
+      '• ' + Object.values(srcProds).flat().length + ' produtos
+
+' +
+      'Ação: ' + action.toUpperCase() + ' com os dados atuais.'
+    )) return;
+
+    setSyncStatus('syncing', 'Importando...');
+
+    let finalCats, finalProds;
+
+    if (merge) {
+      // Merge: add source cats/products that don't exist yet
+      finalCats  = [...(window.S.categories || [])];
+      finalProds = {...(window.S.products   || {})};
+
+      srcCats.forEach(srcCat => {
+        const exists = finalCats.find(c => c.name.toLowerCase() === srcCat.name.toLowerCase());
+        if (!exists) {
+          // New category — add with new ID to avoid conflicts
+          const newId = 'c' + Date.now() + Math.floor(Math.random()*1000);
+          const oldId = srcCat.id;
+          finalCats.push({...srcCat, id: newId});
+          // Copy products with updated categoryId
+          if (srcProds[oldId]) {
+            finalProds[newId] = srcProds[oldId].map(p => ({
+              ...p,
+              id: 'p' + Date.now() + Math.floor(Math.random()*1000),
+              categoryId: newId
+            }));
+          }
+        } else {
+          // Category exists — merge products
+          const existingProds = finalProds[exists.id] || [];
+          const srcCatProds   = srcProds[srcCat.id]   || [];
+          srcCatProds.forEach(sp => {
+            const already = existingProds.find(ep => ep.name.toLowerCase() === sp.name.toLowerCase());
+            if (!already) {
+              existingProds.push({...sp, id: 'p'+Date.now()+Math.floor(Math.random()*1000), categoryId: exists.id});
+            }
+          });
+          finalProds[exists.id] = existingProds;
+        }
+      });
+    } else {
+      // Replace: use source data directly with new IDs
+      finalCats  = srcCats;
+      finalProds = srcProds;
+    }
+
+    // Update local state
+    window.S.categories = finalCats;
+    window.S.products   = finalProds;
+    window.saveState();
+
+    // Push to cloud
+    if (window.pushToCloud) await window.pushToCloud();
+
+    // Clear inputs
+    document.getElementById('importGroupName').value = '';
+    document.getElementById('importGroupPin').value  = '';
+
+    closeModal('mBackup');
+    window.renderCats && window.renderCats();
+    window.updateBadge && window.updateBadge();
+    setSyncStatus('ok', 'Importação concluída!');
+    toast('✅ ' + srcCats.length + ' categorias importadas de "' + srcName + '"!');
+
+  } catch(e) {
+    setSyncStatus('error', 'Erro na importação');
+    alert('Erro ao importar: ' + e.message);
+  }
 };
 
 // ── Expose Firebase functions to global scope ────────────
@@ -1918,16 +2227,22 @@ window.pushListToCloud      = pushListToCloud;
 window.pullSavedListsFromCloud = pullSavedListsFromCloud;
 
 // ── Bootstrap ────────────────────────────────────────────
-function firebaseInit() {
+async function firebaseInit() {
+  const savedGroup = localStorage.getItem('mercado_group');
+  if (!savedGroup) {
+    // No group — show welcome screen
+    document.getElementById('welcomeScreen').style.display = 'block';
+    return;
+  }
+  // Has saved group — load it directly (no PIN required to open)
+  GROUP_ID = savedGroup;
   const el = document.getElementById('currentGroupLabel');
   if (el) el.textContent = GROUP_ID;
-  pullFromCloud().then(() => {
-    pullSavedListsFromCloud();
-    pullListaFromCloud().then(() => {
-      startRealtimeSync();
-      startListaRealtimeSync();
-    });
-  });
+  await pullFromCloud();
+  await pullSavedListsFromCloud();
+  await pullListaFromCloud();
+  startRealtimeSync();
+  startListaRealtimeSync();
 }
 
 // Wait for main app script to be ready before touching window.S
@@ -1997,33 +2312,48 @@ if ('serviceWorker' in navigator) {
     </div>
 
     <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
-      <div style="font-weight:800;font-size:14px;margin-bottom:4px">🔐 PIN de edição</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
-        Com PIN ativado, só quem souber o código pode <b>editar</b> categorias e produtos.
-        Quem não souber ainda pode <b>ver e usar</b> a lista normalmente.
+      <div style="font-weight:800;font-size:14px;margin-bottom:4px">🏠 Grupo atual</div>
+      <div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:12px" id="currentGroupLabel">—</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.6">
+        Para trocar de grupo, informe o nome e PIN do novo grupo.
       </div>
-      <div id="pinStatus" style="font-size:13px;margin-bottom:10px"></div>
-      <input class="form-input" id="pinInput" type="number" placeholder="Digite um PIN (mín. 4 dígitos)" style="margin-bottom:8px">
-      <button class="btn-primary" style="margin-top:0" onclick="setPin()">🔐 Ativar PIN</button>
-      <button class="btn-danger" id="btnRemovePin" style="display:none" onclick="removePin()">🔓 Remover PIN</button>
-    </div>
-
-    <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
-      <div style="font-weight:800;font-size:14px;margin-bottom:4px">☁️ Grupo de sincronização</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
-        Pessoas com o mesmo <b>código de grupo</b> compartilham dados em tempo real.
-        Use um código único para privacidade (ex: <code>familia-silva-2025</code>).
-      </div>
-      <div style="font-size:13px;margin-bottom:8px">Grupo atual: <b id="currentGroupLabel">default</b></div>
-      <input class="form-input" id="groupInput" placeholder="Ex: familia-silva, amigos2025..." style="margin-bottom:8px">
-      <button class="btn-primary" style="margin-top:0" onclick="window.switchGroup(document.getElementById('groupInput').value)">🔄 Trocar de grupo</button>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">⚠️ Ao trocar de grupo, os dados locais serão substituídos pelos do novo grupo.</div>
+      <input class="form-input" id="groupInput" placeholder="Nome do grupo" style="margin-bottom:8px">
+      <input class="form-input" id="groupPinInput" type="password" placeholder="PIN do grupo" style="margin-bottom:8px">
+      <button class="btn-primary" style="margin-top:0;background:#5c6bc0" onclick="switchGroupWithPin()">🔄 Trocar de grupo</button>
+      <button class="btn-danger" style="margin-top:8px" onclick="leaveGroup()">🚪 Sair do grupo</button>
     </div>
 
     <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
       <div style="font-weight:800;font-size:14px;margin-bottom:8px">🔄 Sincronização manual</div>
       <button class="btn-primary" style="margin-top:0;background:#1976d2" onclick="window.pullFromCloud && window.pullFromCloud().then(()=>window.pullSavedListsFromCloud && window.pullSavedListsFromCloud());closeModal('mBackup')">⬇️ Baixar dados da nuvem</button>
       <button class="btn-primary" style="margin-top:8px;background:#388e3c" onclick="window.pushToCloud && window.pushToCloud();closeModal('mBackup')">⬆️ Enviar dados para nuvem</button>
+    </div>
+
+    <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:800;font-size:14px;margin-bottom:4px">🚚 Migrar para novo grupo</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
+        Copia <b>todas</b> as categorias, produtos e listas para um grupo com novo nome. Útil para renomear o grupo atual.
+      </div>
+      <input class="form-input" id="migrateGroupName" placeholder="Nome do novo grupo" style="margin-bottom:8px">
+      <input class="form-input" id="migrateGroupPin" type="password" placeholder="PIN do novo grupo" style="margin-bottom:8px">
+      <input class="form-input" id="migrateGroupPin2" type="password" placeholder="Confirmar PIN">
+      <button class="btn-primary" style="margin-top:10px;background:#6a1b9a" onclick="migrateGroup()">🚚 Migrar dados para novo grupo</button>
+    </div>
+
+    <div style="background:var(--bg);border-radius:14px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:800;font-size:14px;margin-bottom:4px">📥 Importar de outro grupo</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
+        Copia categorias e produtos de outro grupo para o seu. Útil para começar com um catálogo pronto.
+      </div>
+      <input class="form-input" id="importGroupName" placeholder="Nome do grupo de origem" style="margin-bottom:8px">
+      <input class="form-input" id="importGroupPin" type="password" placeholder="PIN do grupo de origem">
+      <div style="margin-top:10px;margin-bottom:4px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="importMerge" checked style="width:16px;height:16px">
+          Mesclar com categorias existentes (desmarque para substituir tudo)
+        </label>
+      </div>
+      <button class="btn-primary" style="margin-top:8px;background:#e65100" onclick="importFromGroup()">📥 Importar categorias e produtos</button>
     </div>
 
     <button class="btn-secondary" onclick="closeModal('mBackup')">Fechar</button>
