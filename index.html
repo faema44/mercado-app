@@ -635,7 +635,7 @@
   <div id="syncStatus" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;background:#e8f5e9;color:#2e7d32;display:none">✅ Sincronizado</div>
   <div class="header-right">
     <button class="icon-btn" onclick="openSearch()" title="Buscar">🔍</button>
-    <button class="icon-btn" onclick="openModal('mBackup')" title="Backup / Compartilhar">💾</button>
+    <button class="icon-btn" onclick="openBackup()" title="Backup / Configurações">💾</button>
     <button class="icon-btn" id="backBtn" style="display:none" onclick="goBack()">←</button>
   </div>
 </div>
@@ -827,6 +827,19 @@ function loadState() {
 // ============================================================
 var _pinUnlocked = false;
 
+function openBackup() {
+  var pin = localStorage.getItem("mercado_pin");
+  if (pin && !_pinUnlocked) {
+    var entered = prompt("🔐 Digite o PIN para acessar as configurações:");
+    if (entered === null) return;
+    if (entered !== pin) { toast("❌ PIN incorreto!"); return; }
+    _pinUnlocked = true;
+    toast("✅ Desbloqueado!");
+  }
+  initPin();
+  openModal("mBackup");
+}
+
 function initPin() {
   var pin = localStorage.getItem("mercado_pin");
   var el = document.getElementById("pinStatus");
@@ -882,6 +895,11 @@ function saveState() {
   if (window.pushToCloud) {
     clearTimeout(window._pushTimer);
     window._pushTimer = setTimeout(window.pushToCloud, 2000);
+  }
+  // Push lista atual to cloud (debounced, faster for real-time feel)
+  if (window.pushListaToCloud) {
+    clearTimeout(window._listaTimer);
+    window._listaTimer = setTimeout(window.pushListaToCloud, 800);
   }
 }
 
@@ -1646,10 +1664,11 @@ updateBadge();
 initPin();
 
 // Expose to window so Firebase module (type=module, runs earlier) can access
-window.S          = S;
-window.saveState  = saveState;
-window.renderCats = renderCats;
+window.S           = S;
+window.saveState   = saveState;
+window.renderCats  = renderCats;
 window.updateBadge = updateBadge;
+window.renderLista = renderLista;
 
 // Signal Firebase that the app is ready
 window._appReady = true;
@@ -1685,6 +1704,12 @@ const db    = getFirestore(fbApp);
 // All users share the same categories & products
 // Each "group" can be identified by a groupId stored locally
 let GROUP_ID = localStorage.getItem('mercado_group') || 'default';
+
+// Unique device ID to avoid self-triggering on lista updates
+if (!localStorage.getItem('mercado_device_id')) {
+  localStorage.setItem('mercado_device_id', 'dev_' + Math.random().toString(36).substr(2, 9));
+}
+window._deviceId = localStorage.getItem('mercado_device_id');
 
 function groupDoc()   { return doc(db, 'grupos', GROUP_ID); }
 function listsCol()   { return collection(db, 'grupos', GROUP_ID, 'listas'); }
@@ -1776,6 +1801,54 @@ function startRealtimeSync() {
   });
 }
 
+// ── LISTA ATUAL sync ──────────────────────────────────────
+async function pushListaToCloud() {
+  if (!navigator.onLine || !window.S) return;
+  try {
+    await setDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'), {
+      items: window.S.lista,
+      updatedAt: Date.now(),
+      updatedBy: window._deviceId
+    });
+  } catch(e) { console.error('lista push error', e); }
+}
+
+async function pullListaFromCloud() {
+  if (!navigator.onLine || !window.S) return;
+  try {
+    const snap = await getDoc(doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'));
+    if (snap.exists()) {
+      const data = snap.data();
+      window.S.lista = data.items || [];
+      window.saveState();
+      window.renderLista && window.renderLista();
+      window.updateBadge();
+      window.renderCats();
+    }
+  } catch(e) { console.error('lista pull error', e); }
+}
+
+let _listaUnsubscribe = null;
+function startListaRealtimeSync() {
+  if (_listaUnsubscribe) _listaUnsubscribe();
+  _listaUnsubscribe = onSnapshot(
+    doc(db, 'grupos', GROUP_ID, 'listaAtual', 'current'),
+    (snap) => {
+      if (!snap.exists() || !window.S) return;
+      const data = snap.data();
+      // Ignore if this device just pushed
+      if (data.updatedBy === window._deviceId) return;
+      window.S.lista = data.items || [];
+      window.saveState();
+      window.renderLista && window.renderLista();
+      window.updateBadge();
+      window.renderCats();
+      setSyncStatus('ok', 'Lista atualizada');
+    },
+    (err) => console.error('lista snapshot error', err)
+  );
+}
+
 // ── SAVED LISTS sync ─────────────────────────────────────
 async function pushListToCloud(list) {
   if (!navigator.onLine) return;
@@ -1807,9 +1880,13 @@ window.switchGroup = function(newId) {
   GROUP_ID = newId.trim() || 'default';
   localStorage.setItem('mercado_group', GROUP_ID);
   if (unsubscribe) unsubscribe();
+  if (_listaUnsubscribe) _listaUnsubscribe();
   pullFromCloud().then(() => {
     pullSavedListsFromCloud();
-    startRealtimeSync();
+    pullListaFromCloud().then(() => {
+      startRealtimeSync();
+      startListaRealtimeSync();
+    });
   });
   document.getElementById('currentGroupLabel').textContent = GROUP_ID;
   toast('Grupo alterado para: ' + GROUP_ID);
@@ -1817,6 +1894,8 @@ window.switchGroup = function(newId) {
 
 // ── Expose Firebase functions to global scope ────────────
 window.pushToCloud          = pushToCloud;
+window.pushListaToCloud     = pushListaToCloud;
+window.pullListaFromCloud   = pullListaFromCloud;
 window.pullFromCloud        = pullFromCloud;
 window.pushListToCloud      = pushListToCloud;
 window.pullSavedListsFromCloud = pullSavedListsFromCloud;
@@ -1827,7 +1906,10 @@ function firebaseInit() {
   if (el) el.textContent = GROUP_ID;
   pullFromCloud().then(() => {
     pullSavedListsFromCloud();
-    startRealtimeSync();
+    pullListaFromCloud().then(() => {
+      startRealtimeSync();
+      startListaRealtimeSync();
+    });
   });
 }
 
