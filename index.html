@@ -14,7 +14,7 @@
 <!-- Firebase SDK -->
 <!-- Firebase loaded at bottom -->
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<title>🛒 Mercado</title>
+<title>🛒 Mercado v2.5</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -2003,11 +2003,13 @@ window.fb_joinGroup = async function() {
   if (!pin)  { alert('Digite o PIN do grupo!');  return; }
   try {
     const snap = await getDoc(doc(db, 'grupos', name));
-    if (!snap.exists() || !snap.data().pin) {
+    const data = snap.data();
+    const storedPin = data && (data.pin || data.PIN || '');
+    if (!snap.exists() || !storedPin) {
       alert('Grupo "' + name + '" n\u00e3o encontrado!');
       return;
     }
-    if (snap.data().pin !== pin) {
+    if (storedPin !== pin) {
       alert('PIN incorreto!');
       return;
     }
