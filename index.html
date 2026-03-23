@@ -663,7 +663,7 @@
       <input class="form-input" id="newGroupName" placeholder="Nome do grupo (ex: familia-silva)" style="margin-bottom:10px">
       <input class="form-input" id="newGroupPin" type="password" placeholder="PIN (mínimo 4 dígitos)" style="margin-bottom:10px">
       <input class="form-input" id="newGroupPin2" type="password" placeholder="Confirmar PIN">
-      <button class="btn-primary" style="margin-top:12px" id="btnCreateGroup" onclick="callWhenReady('createGroup')">✅ Criar grupo</button>
+      <button class="btn-primary" style="margin-top:12px" id="btnCreateGroup" onclick="createGroup()">✅ Criar grupo</button>
     </div>
 
     <!-- JOIN GROUP -->
@@ -672,7 +672,7 @@
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Use o nome e PIN do grupo da sua família</div>
       <input class="form-input" id="joinGroupName" placeholder="Nome do grupo" style="margin-bottom:10px">
       <input class="form-input" id="joinGroupPin" type="password" placeholder="PIN do grupo">
-      <button class="btn-primary" style="margin-top:12px" id="btnJoinGroup" onclick="callWhenReady('joinGroup')">🔗 Entrar no grupo</button>
+      <button class="btn-primary" style="margin-top:12px" id="btnJoinGroup" onclick="joinGroup()">🔗 Entrar no grupo</button>
     </div>
   </div>
 </div>
@@ -858,6 +858,14 @@ function openBackup() {
   });
 }
 
+// Stub functions so onclick works even before Firebase loads
+function createGroup() { callWhenReady('createGroup'); }
+function joinGroup()   { callWhenReady('joinGroup');   }
+function migrateGroup()     { callWhenReady('migrateGroup');     }
+function importFromGroup()  { callWhenReady('importFromGroup');  }
+function switchGroupWithPin() { callWhenReady('switchGroupWithPin'); }
+function leaveGroup()       { callWhenReady('leaveGroup');       }
+
 // Wait for Firebase module to load before calling group functions
 function callWhenReady(fnName) {
   var fn = window[fnName];
@@ -896,17 +904,17 @@ function requireGroup() {
 }
 
 // PIN unlocked for this session (reset on page reload)
-var _sessionUnlocked = false;
+window._sessionUnlocked = false;
 
 function checkGroupPin(onSuccess) {
   if (!requireGroup()) return;
-  if (_sessionUnlocked) { onSuccess(); return; }
+  if (window._sessionUnlocked) { onSuccess(); return; }
   var savedPin = localStorage.getItem('mercado_group_pin');
   if (!savedPin) { onSuccess(); return; } // no PIN cached yet
   var entered = prompt('🔐 Digite o PIN do grupo "' + localStorage.getItem('mercado_group') + '":');
   if (entered === null) return;
   if (entered === savedPin) {
-    _sessionUnlocked = true;
+    window._sessionUnlocked = true;
     toast('✅ Desbloqueado!');
     onSuccess();
   } else {
@@ -1706,10 +1714,7 @@ window.saveState   = saveState;
 window.renderCats  = renderCats;
 window.updateBadge = updateBadge;
 window.renderLista = renderLista;
-Object.defineProperty(window, '_sessionUnlocked', {
-  get: function() { return _sessionUnlocked; },
-  set: function(v) { _sessionUnlocked = v; }
-});
+// _sessionUnlocked accessed via window directly
 
 // Signal Firebase that the app is ready
 window._appReady = true;
@@ -2009,8 +2014,7 @@ window.joinGroup = async function() {
     localStorage.setItem('mercado_group_pin', pin);
     localStorage.removeItem('mercado_lista_ts');
     GROUP_ID = name;
-    window._sessionUnlocked = false;
-    document.getElementById('welcomeScreen').style.display = 'none';
+        document.getElementById('welcomeScreen').style.display = 'none';
     await loadGroup(name);
     window.renderCats && window.renderCats();
     window.updateBadge && window.updateBadge();
@@ -2118,7 +2122,7 @@ window.migrateGroup = async function() {
     localStorage.setItem('mercado_group_pin', newPin);
     localStorage.removeItem('mercado_lista_ts');
     GROUP_ID = newName;
-    window._sessionUnlocked = true;
+    window.window._sessionUnlocked = true;
 
     // Clear inputs
     document.getElementById('migrateGroupName').value = '';
