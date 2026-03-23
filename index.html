@@ -1778,11 +1778,12 @@ async function pushToCloud() {
     window._justPushedTimer = setTimeout(() => { window._justPushed = false; }, 4000);
     const ts = Date.now();
     localStorage.setItem('mercado_lastPush', ts.toString());
+    // merge:true preserves existing fields (like 'pin') not included here
     await setDoc(groupDoc(), {
       categories: window.S.categories,
       products:   window.S.products,
       updatedAt:  ts
-    });
+    }, { merge: true });
     setSyncStatus('ok','Sincronizado');
   } catch(e) {
     setSyncStatus('error','Erro ao salvar');
@@ -1850,7 +1851,7 @@ async function pushListaToCloud() {
       items: window.S.lista,
       updatedAt: ts,
       updatedBy: window._deviceId
-    });
+    }, { merge: true });
     console.log('Lista pushed OK, items:', window.S.lista.length);
   } catch(e) { console.error('lista push error', e); }
 }
