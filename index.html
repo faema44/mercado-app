@@ -9,9 +9,6 @@
 <meta name="apple-mobile-web-app-title" content="Mercado">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="description" content="Lista de supermercado inteligente">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <link rel="manifest" href="manifest.json">
 <!-- Firebase SDK -->
 <!-- Firebase loaded at bottom -->
@@ -1852,21 +1849,16 @@ window.addEventListener('offline', () => setSyncStatus('offline','Sem internet')
 </script>
 
 <script>
-// Registrar Service Worker (PWA offline)
+// Service Worker — desregistra versões antigas e registra nova limpa
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => {
-        console.log('SW registrado:', reg.scope);
-        // Force check for updates immediately
-        reg.update();
-      })
-      .catch(err => console.warn('SW falhou:', err));
-    // If a new SW is waiting, activate it immediately
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    });
+  // Primeiro desregistra TODOS os SWs antigos
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => reg.unregister());
   });
+  // Limpa todos os caches antigos
+  if (window.caches) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+  }
 }
 </script>
 
